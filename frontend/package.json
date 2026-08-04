@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify:abi": "node --experimental-strip-types --no-warnings scripts/verify-abi.mjs"
   },
   "dependencies": {
     "next": "^15.5.4",

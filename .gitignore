@@ -4,11 +4,11 @@
 # Go
 vendor/
 
-# Environment files (contain secrets) — keep .env.example
+# Environment files (contain secrets) — keep the *.example templates
 .env
 .env.*
 !.env.example
-!.env.local.coston
+!.env.*.example
 
 # Coston/Coston2 proxy configs (contain DB credentials)
 config/proxy/extension_proxy.toml

@@ -4,8 +4,6 @@
   "private": true,
   "description": "A keyless, policy-controlled XRPL account powered by Flare Confidential Compute.",
   "scripts": {
-    "tee": "bash scripts/run-tee.sh",
-    "demo": "bash scripts/demo.sh",
     "contracts:build": "forge build",
     "contracts:bindings": "bash scripts/generate-bindings.sh",
     "test:go": "cd go && go test ./...",
@@ -14,6 +12,11 @@
     "install:frontend": "cd frontend && npm install",
     "build": "cd frontend && npm run build",
     "start": "cd frontend && npm run start",
-    "typecheck": "cd frontend && npm run typecheck"
+    "typecheck": "cd frontend && npm run typecheck",
+    "verify:abi": "cd frontend && npm run verify:abi",
+    "fcc:setup": "bash scripts/pre-build.sh",
+    "fcc:start": "bash scripts/start-services.sh",
+    "fcc:register": "bash scripts/post-build.sh",
+    "fcc:test": "bash scripts/test.sh"
   }
 }

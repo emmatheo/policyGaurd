@@ -3,27 +3,30 @@
 import { useState } from "react";
 
 import { formatXRP } from "@/lib/format";
-import type { PaymentVerdict } from "@/lib/types";
+import type { PaymentResponse } from "@/lib/protocol";
 import { submitTransaction, xrplTxUrl, type SubmitResult } from "@/lib/xrpl";
 import { Badge, Button, CopyableHex, ErrorNote } from "./ui";
 
 /**
- * The enclave's answer to a payment request.
+ * The enclave's verdict, exactly as it came back through the instruction pipeline.
  *
- * Approval and refusal are presented with equal weight on purpose: a refusal is the
- * product working, and the reason string is the most important thing on the screen.
+ * Approval and refusal get equal weight on purpose: a refusal is the product working,
+ * and the reason string is the most important thing on the screen. Both arrived as a
+ * successful, signed result from the TEE — neither is decided here.
  */
-export function VerdictCard({ verdict }: { verdict: PaymentVerdict }) {
+export function VerdictCard({ verdict }: { verdict: PaymentResponse }) {
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState<SubmitResult | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const hasBlob = verdict.approved && verdict.signedTxBlob.length > 0;
+
   async function submit() {
-    if (!verdict.txBlob) return;
+    if (!hasBlob) return;
     setSubmitting(true);
     setError(null);
     try {
-      setSubmitted(await submitTransaction(verdict.txBlob));
+      setSubmitted(await submitTransaction(verdict.signedTxBlob));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -44,7 +47,7 @@ export function VerdictCard({ verdict }: { verdict: PaymentVerdict }) {
           {verdict.approved ? "Signed by the TEE" : "Blocked by policy"}
         </Badge>
         <span className="font-mono text-xs text-slate-500">
-          request #{verdict.requestId}
+          request #{verdict.requestId.toString()}
         </span>
       </div>
 
@@ -68,10 +71,10 @@ export function VerdictCard({ verdict }: { verdict: PaymentVerdict }) {
         ))}
       </dl>
 
-      {verdict.approved && verdict.txBlob && verdict.txHash && (
+      {hasBlob && (
         <div className="mt-4 space-y-3">
           <CopyableHex label="XRPL transaction ID" value={verdict.txHash} />
-          <CopyableHex label="Signed tx_blob" value={verdict.txBlob} />
+          <CopyableHex label="Signed tx_blob" value={verdict.signedTxBlob} />
 
           {!submitted && (
             <div>
@@ -79,8 +82,8 @@ export function VerdictCard({ verdict }: { verdict: PaymentVerdict }) {
                 Submit to XRPL testnet
               </Button>
               <p className="mt-2 text-xs text-slate-500">
-                Optional. The enclave&apos;s job ends at the signature — submitting is
-                done outside the trust boundary, and needs the wallet to be funded.
+                Optional. The enclave&apos;s job ends at the signature — submitting
+                happens outside the trust boundary and needs the wallet to be funded.
               </p>
             </div>
           )}

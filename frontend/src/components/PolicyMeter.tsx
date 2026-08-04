@@ -1,30 +1,31 @@
 "use client";
 
 import { formatXRP } from "@/lib/format";
-import type { WalletState } from "@/lib/types";
 
 /**
- * The enclave's own view of the rolling window.
+ * The rolling-window allowance.
  *
- * These numbers come from GET /state, not from the last verdict, so the bar always
- * reflects what the TEE will actually enforce on the next request rather than what
- * the UI believes happened.
+ * The limit comes from the contract and the spend from the enclave's last verdict —
+ * the two authorities on the policy. Nothing here is derived from what the browser
+ * thinks happened, so the bar cannot drift away from what the TEE will enforce next.
  */
 export function PolicyMeter({
-  wallet,
+  limitDrops,
+  spentDrops,
+  remainingDrops,
+  signed,
+  refused,
   windowHours,
 }: {
-  wallet: WalletState | null;
+  limitDrops: bigint;
+  spentDrops: bigint;
+  remainingDrops: bigint;
+  signed: number;
+  refused: number;
   windowHours: number;
 }) {
-  const limit = wallet ? BigInt(wallet.dailyLimitDrops) : 0n;
-  const spent = wallet ? BigInt(wallet.spentDrops) : 0n;
-  const remaining = wallet ? BigInt(wallet.remainingDrops) : 0n;
-
-  // Guard against a zero limit, which is the "not configured" sentinel.
-  const pct =
-    limit > 0n ? Number((spent * 1000n) / limit) / 10 : 0;
-  const nearlySpent = limit > 0n && pct >= 80;
+  const pct = limitDrops > 0n ? Number((spentDrops * 1000n) / limitDrops) / 10 : 0;
+  const nearlySpent = limitDrops > 0n && pct >= 80;
 
   return (
     <div className="rounded-2xl border border-white/8 bg-ink-900/70 p-5 backdrop-blur">
@@ -35,21 +36,19 @@ export function PolicyMeter({
         <span className="text-xs text-slate-500">enforced in-enclave</span>
       </div>
 
-      {limit === 0n ? (
+      {limitDrops === 0n ? (
         <p className="mt-4 text-sm text-slate-500">
-          No limit configured yet — the enclave refuses every payment until one is set.
+          No limit published yet — the enclave refuses every payment until one is set.
         </p>
       ) : (
         <>
           <div className="mt-4 flex items-end justify-between gap-3">
             <p className="text-2xl font-semibold tracking-tight text-slate-100">
-              {formatXRP(remaining)}{" "}
-              <span className="text-sm font-normal text-slate-500">
-                XRP remaining
-              </span>
+              {formatXRP(remainingDrops)}{" "}
+              <span className="text-sm font-normal text-slate-500">XRP remaining</span>
             </p>
             <p className="text-xs text-slate-500">
-              {formatXRP(spent)} / {formatXRP(limit)} spent
+              {formatXRP(spentDrops)} / {formatXRP(limitDrops)} spent
             </p>
           </div>
 
@@ -71,16 +70,12 @@ export function PolicyMeter({
 
           <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-xl border border-white/8 bg-ink-950/40 px-3 py-2.5">
-              <dt className="text-xs text-slate-500">Payments signed</dt>
-              <dd className="mt-0.5 font-semibold text-mint-400">
-                {wallet?.paymentsSigned ?? 0}
-              </dd>
+              <dt className="text-xs text-slate-500">Signed by the TEE</dt>
+              <dd className="mt-0.5 font-semibold text-mint-400">{signed}</dd>
             </div>
             <div className="rounded-xl border border-white/8 bg-ink-950/40 px-3 py-2.5">
               <dt className="text-xs text-slate-500">Blocked by policy</dt>
-              <dd className="mt-0.5 font-semibold text-flare-400">
-                {wallet?.paymentsRefused ?? 0}
-              </dd>
+              <dd className="mt-0.5 font-semibold text-flare-400">{refused}</dd>
             </div>
           </dl>
         </>

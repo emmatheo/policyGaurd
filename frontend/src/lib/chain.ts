@@ -5,40 +5,92 @@ import {
   defineChain,
   http,
   parseAbi,
-  parseEventLogs,
   type Address,
+  type Chain,
   type Hash,
 } from "viem";
 
 /**
- * Coston2, Flare's testnet and the chain the FCC contracts are deployed on.
+ * Flare network definitions and the InstructionSender bindings.
+ *
+ * Every state change in PolicyGuard is a transaction on one of these chains. There is
+ * no off-chain path — the contract is what dispatches work to the enclave, so an
+ * unconfigured contract address means the product cannot run, not that it falls back
+ * to something local.
  */
+
 export const coston2 = defineChain({
   id: 114,
   name: "Flare Testnet Coston2",
   nativeCurrency: { name: "Coston2 Flare", symbol: "C2FLR", decimals: 18 },
-  rpcUrls: {
-    default: {
-      http: [
-        process.env.NEXT_PUBLIC_COSTON2_RPC ??
-          "https://coston2-api.flare.network/ext/C/rpc",
-      ],
-    },
-  },
+  rpcUrls: { default: { http: ["https://coston2-api.flare.network/ext/C/rpc"] } },
   blockExplorers: {
-    default: {
-      name: "Coston2 Explorer",
-      url: "https://coston2-explorer.flare.network",
-    },
+    default: { name: "Coston2 Explorer", url: "https://coston2-explorer.flare.network" },
   },
   testnet: true,
 });
 
+export const songbird = defineChain({
+  id: 19,
+  name: "Songbird Canary-Network",
+  nativeCurrency: { name: "Songbird", symbol: "SGB", decimals: 18 },
+  rpcUrls: { default: { http: ["https://songbird-api.flare.network/ext/C/rpc"] } },
+  blockExplorers: {
+    default: { name: "Songbird Explorer", url: "https://songbird-explorer.flare.network" },
+  },
+});
+
+export const flare = defineChain({
+  id: 14,
+  name: "Flare Mainnet",
+  nativeCurrency: { name: "Flare", symbol: "FLR", decimals: 18 },
+  rpcUrls: { default: { http: ["https://flare-api.flare.network/ext/C/rpc"] } },
+  blockExplorers: {
+    default: { name: "Flare Explorer", url: "https://flare-explorer.flare.network" },
+  },
+});
+
+const CHAINS: Record<string, Chain> = {
+  coston2: coston2,
+  songbird: songbird,
+  flare: flare,
+};
+
 /**
- * The subset of InstructionSender the UI calls. Kept as a hand-written ABI rather
- * than an imported artifact so the frontend has no build-time dependency on
- * `forge build` having been run.
+ * Which network the app talks to. Coston2 is the default because it is the only
+ * network with a public FCC deployment today — see the README's network matrix.
  */
+export const NETWORK = (process.env.NEXT_PUBLIC_FLARE_NETWORK ?? "coston2").toLowerCase();
+
+export const activeChain: Chain = CHAINS[NETWORK] ?? coston2;
+
+/** An RPC override, for a private or rate-limit-free endpoint. */
+const RPC_URL = process.env.NEXT_PUBLIC_FLARE_RPC?.trim();
+
+export const publicClient = createPublicClient({
+  chain: activeChain,
+  transport: http(RPC_URL || undefined),
+});
+
+/**
+ * The deployed PolicyGuard InstructionSender.
+ *
+ * Written to `config/extension.env` as INSTRUCTION_SENDER by `scripts/pre-build.sh`.
+ */
+export const INSTRUCTION_SENDER = (
+  process.env.NEXT_PUBLIC_INSTRUCTION_SENDER ?? ""
+).trim() as Address | "";
+
+export const isConfigured = /^0x[0-9a-fA-F]{40}$/.test(INSTRUCTION_SENDER);
+
+/**
+ * Fee forwarded with each instruction. The registry's minimum is 1000 wei; this sits
+ * comfortably above it, and any excess is returned to the claim-back address.
+ */
+export const INSTRUCTION_FEE_WEI = BigInt(
+  process.env.NEXT_PUBLIC_INSTRUCTION_FEE_WEI ?? "1000000000000",
+);
+
 export const instructionSenderAbi = parseAbi([
   "function createWallet() payable returns (uint64 walletId)",
   "function setDailyLimit(uint64 walletId, uint64 limitDrops) payable",
@@ -53,30 +105,6 @@ export const instructionSenderAbi = parseAbi([
   "event PaymentRequested(uint64 indexed walletId, uint64 indexed requestId, string destination, uint64 amountDrops, uint64 limitDrops)",
 ]);
 
-/**
- * The deployed InstructionSender, if one is configured.
- *
- * When this is unset the UI runs in local-only mode: the enclave still enforces the
- * policy, but nothing is anchored on Coston2. That keeps the demo runnable before
- * the contract is deployed.
- */
-export const INSTRUCTION_SENDER = (process.env.NEXT_PUBLIC_INSTRUCTION_SENDER ?? "")
-  .trim() as Address | "";
-
-export const isChainConfigured = /^0x[0-9a-fA-F]{40}$/.test(INSTRUCTION_SENDER);
-
-/**
- * Fee forwarded with each instruction. The registry's minimum is 1000 wei; this is
- * comfortably above it so a fee-schedule change does not break the demo.
- */
-export const INSTRUCTION_FEE_WEI = 1_000_000_000_000n;
-
-export const publicClient = createPublicClient({
-  chain: coston2,
-  transport: http(),
-});
-
-/** The EIP-1193 provider injected by a browser wallet, if present. */
 function injectedProvider() {
   if (typeof window === "undefined") return undefined;
   const provider = (window as { ethereum?: unknown }).ethereum;
@@ -87,29 +115,24 @@ export function hasInjectedWallet(): boolean {
   return injectedProvider() !== undefined;
 }
 
-/**
- * Prompts the wallet for an account and makes sure it is pointed at Coston2.
- *
- * Signing a policy change against the wrong chain would silently do nothing useful,
- * so the switch is attempted up front and the chain is added if the wallet has never
- * seen it.
- */
+/** Prompts for an account and makes sure the wallet is pointed at the active chain. */
 export async function connectWallet(): Promise<Address> {
   const provider = injectedProvider();
   if (!provider) {
-    throw new Error("No browser wallet found. Install MetaMask to use Coston2 mode.");
+    throw new Error(
+      "No browser wallet found. PolicyGuard sends real transactions, so a wallet is required.",
+    );
   }
 
-  const walletClient = createWalletClient({ chain: coston2, transport: custom(provider) });
+  const walletClient = createWalletClient({ chain: activeChain, transport: custom(provider) });
   const [account] = await walletClient.requestAddresses();
   if (!account) throw new Error("Wallet returned no accounts.");
 
   try {
-    await walletClient.switchChain({ id: coston2.id });
+    await walletClient.switchChain({ id: activeChain.id });
   } catch {
-    // The wallet does not know Coston2 yet; offer to add it.
-    await walletClient.addChain({ chain: coston2 });
-    await walletClient.switchChain({ id: coston2.id });
+    await walletClient.addChain({ chain: activeChain });
+    await walletClient.switchChain({ id: activeChain.id });
   }
 
   return account;
@@ -118,76 +141,52 @@ export async function connectWallet(): Promise<Address> {
 function walletClientFor(account: Address) {
   const provider = injectedProvider();
   if (!provider) throw new Error("No browser wallet found.");
-  return createWalletClient({ account, chain: coston2, transport: custom(provider) });
+  return createWalletClient({ account, chain: activeChain, transport: custom(provider) });
 }
 
-function requireContract(): Address {
-  if (!isChainConfigured) {
+export function contractAddress(): Address {
+  if (!isConfigured) {
     throw new Error(
-      "NEXT_PUBLIC_INSTRUCTION_SENDER is not set — deploy the contract and add it to .env.local.",
+      "NEXT_PUBLIC_INSTRUCTION_SENDER is not set. Deploy the contract with " +
+        "scripts/pre-build.sh and copy INSTRUCTION_SENDER from config/extension.env.",
     );
   }
   return INSTRUCTION_SENDER as Address;
 }
 
-export interface ChainCall<T> {
-  txHash: Hash;
-  value: T;
-}
-
 /**
- * Registers a wallet on-chain and returns the id the contract assigned.
+ * The write calls.
  *
- * The id comes from the WalletCreated event rather than the return value, because a
- * state-changing call only yields a receipt.
+ * Each returns only a transaction hash. Everything after that — mining, the registry
+ * event, consensus, the enclave's answer — belongs to the instruction lifecycle in
+ * fcc.ts, so these stay honest about what they have actually accomplished.
  */
-export async function createWalletOnChain(account: Address): Promise<ChainCall<number>> {
-  const contract = requireContract();
-  const wallet = walletClientFor(account);
 
-  const txHash = await wallet.writeContract({
-    address: contract,
+export async function createWalletTx(account: Address): Promise<Hash> {
+  return walletClientFor(account).writeContract({
+    address: contractAddress(),
     abi: instructionSenderAbi,
     functionName: "createWallet",
     value: INSTRUCTION_FEE_WEI,
   });
-
-  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-  const logs = parseEventLogs({
-    abi: instructionSenderAbi,
-    eventName: "WalletCreated",
-    logs: receipt.logs,
-  });
-  if (logs.length === 0) {
-    throw new Error("createWallet succeeded but emitted no WalletCreated event.");
-  }
-
-  return { txHash, value: Number(logs[0].args.walletId) };
 }
 
-/** Publishes the daily limit on-chain. */
-export async function setDailyLimitOnChain(
+export async function setDailyLimitTx(
   account: Address,
-  walletId: number,
+  walletId: bigint,
   limitDrops: bigint,
-): Promise<ChainCall<bigint>> {
-  const contract = requireContract();
-  const wallet = walletClientFor(account);
-
-  const txHash = await wallet.writeContract({
-    address: contract,
+): Promise<Hash> {
+  return walletClientFor(account).writeContract({
+    address: contractAddress(),
     abi: instructionSenderAbi,
     functionName: "setDailyLimit",
-    args: [BigInt(walletId), limitDrops],
+    args: [walletId, limitDrops],
     value: INSTRUCTION_FEE_WEI,
   });
-
-  await publicClient.waitForTransactionReceipt({ hash: txHash });
-  return { txHash, value: limitDrops };
 }
 
-export interface OnChainPaymentInput {
-  walletId: number;
+export interface PaymentArgs {
+  walletId: bigint;
   destination: string;
   amountDrops: bigint;
   sequence: number;
@@ -196,56 +195,62 @@ export interface OnChainPaymentInput {
   destinationTag?: number;
 }
 
-/** Records a payment request on-chain and returns the assigned request id. */
-export async function requestPaymentOnChain(
+export async function requestPaymentTx(
   account: Address,
-  input: OnChainPaymentInput,
-): Promise<ChainCall<number>> {
-  const contract = requireContract();
-  const wallet = walletClientFor(account);
-
-  const txHash = await wallet.writeContract({
-    address: contract,
+  args: PaymentArgs,
+): Promise<Hash> {
+  return walletClientFor(account).writeContract({
+    address: contractAddress(),
     abi: instructionSenderAbi,
     functionName: "requestPayment",
     args: [
-      BigInt(input.walletId),
-      input.destination,
-      input.amountDrops,
-      input.sequence,
-      input.feeDrops,
-      input.lastLedgerSequence,
-      input.destinationTag ?? 0,
+      args.walletId,
+      args.destination,
+      args.amountDrops,
+      args.sequence,
+      args.feeDrops,
+      args.lastLedgerSequence,
+      args.destinationTag ?? 0,
     ],
     value: INSTRUCTION_FEE_WEI,
   });
-
-  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
-  const logs = parseEventLogs({
-    abi: instructionSenderAbi,
-    eventName: "PaymentRequested",
-    logs: receipt.logs,
-  });
-  if (logs.length === 0) {
-    throw new Error("requestPayment succeeded but emitted no PaymentRequested event.");
-  }
-
-  return { txHash, value: Number(logs[0].args.requestId) };
 }
 
-/** Reads a wallet's published policy record. */
-export async function readWalletOnChain(walletId: number) {
-  const contract = requireContract();
+/** Reads a wallet's published policy record — the on-chain half of the limit. */
+export async function readWallet(walletId: bigint) {
   const [owner, dailyLimitDrops, createdAt] = await publicClient.readContract({
-    address: contract,
+    address: contractAddress(),
     abi: instructionSenderAbi,
     functionName: "getWallet",
-    args: [BigInt(walletId)],
+    args: [walletId],
   });
   return { owner, dailyLimitDrops, createdAt };
 }
 
-/** Builds an explorer link for a Coston2 transaction. */
+/** Every wallet an account owns, so a returning user is not stranded. */
+export async function readWalletsByOwner(owner: Address): Promise<bigint[]> {
+  const ids = await publicClient.readContract({
+    address: contractAddress(),
+    abi: instructionSenderAbi,
+    functionName: "getWalletsByOwner",
+    args: [owner],
+  });
+  return [...ids];
+}
+
+/** Confirms the contract has discovered its extension id — the usual setup failure. */
+export async function readExtensionId(): Promise<bigint> {
+  return publicClient.readContract({
+    address: contractAddress(),
+    abi: instructionSenderAbi,
+    functionName: "extensionId",
+  });
+}
+
 export function explorerTxUrl(txHash: string): string {
-  return `${coston2.blockExplorers.default.url}/tx/${txHash}`;
+  return `${activeChain.blockExplorers?.default.url}/tx/${txHash}`;
+}
+
+export function explorerAddressUrl(address: string): string {
+  return `${activeChain.blockExplorers?.default.url}/address/${address}`;
 }
