@@ -1,0 +1,20 @@
+# Normalise line endings so a clone works the same on every platform.
+* text=auto eol=lf
+
+# Shell scripts and the Dockerfile must keep LF — CRLF breaks the shebang and the
+# scripts fail with "bad interpreter" or "\r: command not found" on Linux and macOS.
+*.sh text eol=lf
+Dockerfile text eol=lf
+*.dockerignore text eol=lf
+docker-compose*.yaml text eol=lf
+
+# Go tooling assumes LF.
+*.go text eol=lf
+go.mod text eol=lf
+go.sum text eol=lf
+
+# Binary assets, left untouched.
+*.png binary
+*.jpg binary
+*.woff2 binary
+*.tar binary

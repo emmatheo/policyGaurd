@@ -1,0 +1,93 @@
+@import "tailwindcss";
+
+@theme {
+  /* Roboto, injected by next/font in layout.tsx. Wiring it through Tailwind's own
+     font tokens means `font-sans` and `font-mono` resolve to it everywhere, including
+     in the demo route's existing markup. */
+  --font-sans:
+    var(--font-roboto), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono:
+    var(--font-roboto-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Demo surface palette. */
+  --color-ink-950: #07090f;
+  --color-ink-900: #0c1017;
+  --color-ink-850: #11161f;
+  --color-ink-800: #161c27;
+  --color-ink-700: #222a38;
+  --color-ink-600: #333d4e;
+
+  --color-flare-400: #ff8a7a;
+  --color-flare-500: #ff5f47;
+  --color-flare-600: #e8442c;
+
+  --color-mint-400: #4ade9a;
+  --color-mint-500: #22c77e;
+
+  --color-amber-glow: #fbbf5c;
+}
+
+html,
+body {
+  /* The landing owns the light shell; the demo route paints its own dark surface.
+     Keeping the background on the page rather than on body lets the two coexist
+     without one flashing the other's colour on navigation. */
+  background-color: #dededc;
+  color: #111111;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The dark surface used by the PolicyGuard demo route. */
+.demo-surface {
+  background-color: var(--color-ink-950);
+  color: #e8ecf4;
+  background-image:
+    radial-gradient(60rem 30rem at 15% -10%, rgba(255, 95, 71, 0.1), transparent 60%),
+    radial-gradient(50rem 28rem at 92% 0%, rgba(34, 199, 126, 0.08), transparent 55%);
+  background-attachment: fixed;
+}
+
+/* Long hex strings (signed blobs, tx hashes) must wrap rather than widen the page. */
+.break-hex {
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+@keyframes pg-fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.animate-fade-up {
+  animation: pg-fade-up 220ms ease-out both;
+}
+
+/* The scroll indicator's drift. */
+@keyframes pg-cue {
+  0%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.55;
+  }
+  50% {
+    transform: translateY(4px);
+    opacity: 1;
+  }
+}
+
+.animate-cue {
+  animation: pg-cue 1.9s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-fade-up,
+  .animate-cue {
+    animation: none;
+  }
+}

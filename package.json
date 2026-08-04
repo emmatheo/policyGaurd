@@ -1,0 +1,19 @@
+{
+  "name": "policyguard-xrpl",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A keyless, policy-controlled XRPL account powered by Flare Confidential Compute.",
+  "scripts": {
+    "tee": "bash scripts/run-tee.sh",
+    "demo": "bash scripts/demo.sh",
+    "contracts:build": "forge build",
+    "contracts:bindings": "bash scripts/generate-bindings.sh",
+    "test:go": "cd go && go test ./...",
+    "test:contracts": "forge build",
+    "dev": "cd frontend && npm run dev",
+    "install:frontend": "cd frontend && npm install",
+    "build": "cd frontend && npm run build",
+    "start": "cd frontend && npm run start",
+    "typecheck": "cd frontend && npm run typecheck"
+  }
+}
