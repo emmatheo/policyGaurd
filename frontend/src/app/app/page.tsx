@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useCallback, useEffect, useState } from "react";
 import type { Address, Hash } from "viem";
 
 import { ActivityLog } from "@/components/ActivityLog";
+import { Logo } from "@/components/brand";
 import { PolicyMeter } from "@/components/PolicyMeter";
 import { VerdictCard } from "@/components/VerdictCard";
 import {
@@ -14,6 +16,7 @@ import {
   Dot,
   ErrorNote,
   Field,
+  ProgressNote,
   StepCard,
 } from "@/components/ui";
 import {
@@ -23,7 +26,6 @@ import {
   explorerAddressUrl,
   INSTRUCTION_SENDER,
   isConfigured,
-  NETWORK,
   readExtensionId,
   readWallet,
   requestPaymentTx,
@@ -40,7 +42,7 @@ import {
 import type { LogEntry } from "@/lib/types";
 import { fetchAccountContext, XRPL_FAUCET_URL, xrplAccountUrl } from "@/lib/xrpl";
 
-/** A well-known XRPL testnet address, pre-filled so a judge needs no setup. */
+/** A well-known XRPL testnet address, pre-filled so nothing has to be set up first. */
 const DEFAULT_DESTINATION = "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh";
 
 interface Wallet {
@@ -60,7 +62,7 @@ interface PolicyState {
   refused: number;
 }
 
-export default function Demo() {
+export default function App() {
   const [account, setAccount] = useState<Address | null>(null);
   const [extensionId, setExtensionId] = useState<bigint | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
@@ -91,7 +93,7 @@ export default function Demo() {
   }, []);
 
   // Confirm the contract knows its extension id. Without it every send reverts with
-  // "Extension ID is not set", which is worth catching before a judge clicks anything.
+  // "Extension ID is not set", which is worth catching before anything is clicked.
   useEffect(() => {
     if (!isConfigured) return;
     readExtensionId()
@@ -125,7 +127,7 @@ export default function Demo() {
       setProgress(`Mining ${truncate(txHash, 10, 6)} on ${activeChain.name}…`);
       addLog({
         kind: "info",
-        title: `${label} submitted on ${activeChain.name}`,
+        title: `${label} submitted`,
         detail: "Waiting for the registry to dispatch the instruction.",
         chainTx: txHash,
       });
@@ -176,7 +178,7 @@ export default function Demo() {
     setBusy("wallet");
     setError(null);
     try {
-      const { result, txHash } = await runInstruction("createWallet", () =>
+      const { result, txHash } = await runInstruction("Create wallet", () =>
         createWalletTx(account),
       );
       const created = decodeCreateResponse(result.data);
@@ -197,14 +199,14 @@ export default function Demo() {
 
       addLog({
         kind: "success",
-        title: `Enclave generated XRPL wallet ${created.walletId}`,
-        detail: `${created.classicAddress} — the secret was created inside the TEE and has no export path.`,
+        title: `Wallet ${created.walletId} created in the enclave`,
+        detail: `${created.classicAddress} — the key was generated inside the TEE and has no export path.`,
         chainTx: txHash,
       });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       setError(message);
-      addLog({ kind: "error", title: "createWallet failed", detail: message });
+      addLog({ kind: "error", title: "Create wallet failed", detail: message });
     } finally {
       setBusy(null);
       setProgress(null);
@@ -218,7 +220,7 @@ export default function Demo() {
     setError(null);
     try {
       const limitDrops = parseXRP(limitInput);
-      const { result, txHash } = await runInstruction("setDailyLimit", () =>
+      const { result, txHash } = await runInstruction("Set daily limit", () =>
         setDailyLimitTx(account, wallet.walletId, limitDrops),
       );
       const applied = decodeSetLimitResponse(result.data);
@@ -242,7 +244,7 @@ export default function Demo() {
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       setError(message);
-      addLog({ kind: "error", title: "setDailyLimit failed", detail: message });
+      addLog({ kind: "error", title: "Set limit failed", detail: message });
     } finally {
       setBusy(null);
       setProgress(null);
@@ -275,7 +277,7 @@ export default function Demo() {
         });
       }
 
-      const { result, txHash } = await runInstruction("requestPayment", () =>
+      const { result, txHash } = await runInstruction("Request payment", () =>
         requestPaymentTx(account, {
           walletId: wallet.walletId,
           destination,
@@ -299,15 +301,15 @@ export default function Demo() {
       addLog({
         kind: decision.approved ? "success" : "refused",
         title: decision.approved
-          ? "Approved — the enclave signed an XRPL Payment"
-          : "Refused — the policy check failed",
+          ? "Approved — the enclave signed an XRPL payment"
+          : "Blocked — the policy refused",
         detail: decision.reason,
         chainTx: txHash,
       });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       setError(message);
-      addLog({ kind: "error", title: "requestPayment failed", detail: message });
+      addLog({ kind: "error", title: "Request payment failed", detail: message });
     } finally {
       setBusy(null);
       setProgress(null);
@@ -317,66 +319,25 @@ export default function Demo() {
   const limitSet = policy.limitDrops > 0n;
   const ready = isConfigured && account !== null && setupError === null;
 
-  if (!isConfigured) {
-    return <NotConfigured />;
-  }
+  if (!isConfigured) return <NotConfigured />;
 
   return (
-    <main className="demo-surface min-h-screen px-5 py-10 sm:px-8 sm:py-14">
-      <div className="mx-auto max-w-6xl">
-        <header>
-          <div className="flex flex-wrap items-start justify-between gap-5">
-            <div className="min-w-0">
-              <Badge tone="warn">Flare Confidential Compute · {activeChain.name}</Badge>
-              <h1 className="mt-3 text-3xl font-semibold tracking-tight text-slate-50">
-                PolicyGuard XRPL
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm leading-relaxed text-slate-400">
-                Every step below is a real transaction on {activeChain.name}. The
-                contract dispatches an instruction, data providers carry it to the TEE,
-                and the enclave answers. Nothing is decided in this browser.
-              </p>
-            </div>
+    <div className="min-h-screen bg-mint-50">
+      <AppHeader account={account} onConnect={onConnect} extensionId={extensionId} />
 
-            <div className="flex shrink-0 flex-col items-end gap-2.5">
-              {account ? (
-                <span className="inline-flex items-center gap-2 rounded-full border border-white/12 bg-white/5 px-3 py-1.5 font-mono text-xs text-slate-300">
-                  <Dot ok />
-                  {truncate(account, 6, 4)}
-                </span>
-              ) : (
-                <Button onClick={onConnect}>Connect wallet</Button>
-              )}
-              <a
-                href={explorerAddressUrl(INSTRUCTION_SENDER)}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="font-mono text-[11px] text-slate-500 underline decoration-dotted underline-offset-2 hover:text-slate-300"
-              >
-                contract {truncate(INSTRUCTION_SENDER, 8, 6)}
-              </a>
-            </div>
-          </div>
+      <main className="mx-auto max-w-[1200px] px-5 py-10 sm:px-8 sm:py-12">
+        {setupError && (
+          <Card className="mb-6 border-fail-500/30 bg-fail-500/5">
+            <p className="text-[14px] text-forest-950">{setupError}</p>
+          </Card>
+        )}
 
-          {setupError && (
-            <Card className="mt-6 border-flare-500/30 bg-flare-500/[0.06]">
-              <p className="text-sm text-slate-200">{setupError}</p>
-            </Card>
-          )}
-
-          {extensionId !== null && extensionId > 0n && (
-            <p className="mt-4 font-mono text-[11px] text-slate-600">
-              extension id {extensionId.toString()} · network {NETWORK}
-            </p>
-          )}
-        </header>
-
-        <div className="mt-8 grid gap-6 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)]">
-          <div className="space-y-5">
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+          <div className="space-y-4">
             <StepCard
               step={1}
-              title="Create a keyless XRPL wallet"
-              description="createWallet() registers the wallet on Flare and dispatches WALLET/CREATE. The enclave generates a secp256k1 keypair with its own CSPRNG and returns only the address and public key."
+              title="Create wallet"
+              description="The enclave generates an XRPL keypair and returns only the address. There is no seed phrase, because no secret exists outside the TEE."
               enabled={ready}
               done={wallet !== null}
             >
@@ -391,18 +352,18 @@ export default function Demo() {
               {wallet && (
                 <div className="mt-4 space-y-3">
                   <CopyableHex
-                    label={`XRPL classic address (wallet ${wallet.walletId})`}
+                    label={`XRPL address · wallet ${wallet.walletId}`}
                     value={wallet.classicAddress}
                     href={xrplAccountUrl(wallet.classicAddress)}
                   />
                   <CopyableHex label="Public key" value={wallet.publicKey} />
-                  <p className="text-xs text-slate-500">
+                  <p className="text-[12.5px] text-ink-500">
                     Fund it at the{" "}
                     <a
                       href={XRPL_FAUCET_URL}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="underline decoration-dotted underline-offset-2 hover:text-slate-300"
+                      className="text-signal-600 underline decoration-dotted underline-offset-2"
                     >
                       XRPL testnet faucet
                     </a>{" "}
@@ -414,8 +375,8 @@ export default function Demo() {
 
             <StepCard
               step={2}
-              title="Set the daily spending limit"
-              description="setDailyLimit() publishes the rule on Flare and dispatches POLICY/SET_LIMIT. The enclave stores its own copy and applies whichever of the two is stricter."
+              title="Set policy"
+              description="Publish a daily spending limit on Flare. The enclave stores its own copy and applies whichever of the two is stricter."
               enabled={ready && wallet !== null}
               done={limitSet}
             >
@@ -443,13 +404,13 @@ export default function Demo() {
 
             <StepCard
               step={3}
-              title="Request a payment"
-              description="requestPayment() dispatches PAYMENT/REQUEST. The enclave re-derives the 24h spend from its own ledger and either signs a canonical XRPL Payment or refuses with a reason."
+              title="Send payment"
+              description="The enclave adds up the last 24 hours and decides. Under the limit it signs a real XRPL payment; over it, you get a reason and nothing else."
               enabled={ready && wallet !== null && limitSet}
             >
               <div className="space-y-3">
                 <Field
-                  label="Destination address"
+                  label="Destination"
                   name="destination"
                   value={destination}
                   onChange={(e) => setDestination(e.target.value)}
@@ -473,7 +434,7 @@ export default function Demo() {
                     busy={busy === "pay"}
                     disabled={!ready || !limitSet || busy !== null}
                   >
-                    Request payment
+                    Send payment
                   </Button>
                 </div>
               </div>
@@ -485,15 +446,11 @@ export default function Demo() {
               )}
             </StepCard>
 
-            {progress && (
-              <p className="rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 font-mono text-xs text-slate-400">
-                {progress}
-              </p>
-            )}
+            {progress && <ProgressNote>{progress}</ProgressNote>}
             {error && <ErrorNote>{error}</ErrorNote>}
           </div>
 
-          <div className="space-y-5 lg:sticky lg:top-8 lg:self-start">
+          <div className="space-y-4 lg:sticky lg:top-24 lg:self-start">
             <PolicyMeter
               limitDrops={policy.limitDrops}
               spentDrops={policy.spentDrops}
@@ -505,47 +462,106 @@ export default function Demo() {
             <ActivityLog entries={log} />
           </div>
         </div>
+      </main>
+    </div>
+  );
+}
+
+function AppHeader({
+  account,
+  onConnect,
+  extensionId,
+}: {
+  account: Address | null;
+  onConnect: () => void;
+  extensionId: bigint | null;
+}) {
+  return (
+    <header className="sticky top-0 z-40 bg-forest-950">
+      <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4 px-5 py-3.5 sm:px-8">
+        <Link href="/" className="flex items-center gap-2.5">
+          <Logo size={24} className="text-white" />
+          <span className="text-[16px] font-medium text-white">PolicyGuard</span>
+        </Link>
+
+        <div className="flex items-center gap-3">
+          <span className="hidden items-center gap-2 rounded-full bg-white/8 px-3 py-1.5 text-[12.5px] text-white/70 sm:inline-flex">
+            <Dot ok />
+            {activeChain.name}
+            {extensionId !== null && extensionId > 0n && (
+              <span className="font-mono text-white/40">
+                · ext {extensionId.toString()}
+              </span>
+            )}
+          </span>
+
+          {account ? (
+            <a
+              href={explorerAddressUrl(account)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-2 rounded-full bg-white/8 px-3 py-1.5 font-mono text-[12.5px] text-white/80 transition hover:bg-white/15"
+            >
+              {truncate(account, 6, 4)}
+            </a>
+          ) : (
+            <button
+              type="button"
+              onClick={onConnect}
+              className="rounded-full bg-white px-4 py-2 text-[13.5px] font-medium text-forest-950 transition hover:bg-signal-300"
+            >
+              Connect wallet
+            </button>
+          )}
+        </div>
       </div>
-    </main>
+    </header>
   );
 }
 
 /**
  * Shown when no contract is configured.
  *
- * There is deliberately nothing to click here. A build with no contract cannot do
- * anything real, and offering a simulated path would defeat the point of the product.
+ * There is deliberately nothing to click. A build with no contract cannot do anything
+ * real, and offering a simulated path would defeat the point of the product.
  */
 function NotConfigured() {
   return (
-    <main className="demo-surface flex min-h-screen items-center justify-center px-5 py-14">
+    <div className="flex min-h-screen items-center justify-center bg-mint-50 px-5 py-14">
       <Card className="max-w-xl">
         <Badge tone="bad">Not configured</Badge>
-        <h1 className="mt-4 text-xl font-semibold text-slate-100">
-          No InstructionSender contract is set
+        <h1 className="mt-4 text-[22px] font-semibold text-forest-950">
+          No contract is set
         </h1>
-        <p className="mt-3 text-sm leading-relaxed text-slate-400">
+        <p className="mt-3 text-[14.5px] leading-relaxed text-ink-700">
           PolicyGuard has no offline mode. Every wallet, policy change, and payment
           decision is dispatched by a contract on Flare and answered by a TEE, so
           without a deployed contract there is nothing to show.
         </p>
-        <ol className="mt-5 space-y-2 text-sm text-slate-400">
+        <ol className="mt-5 space-y-2">
           {[
-            "Deploy and register: bash scripts/pre-build.sh",
-            "Start the stack: bash scripts/start-services.sh",
-            "Register the machine: bash scripts/post-build.sh",
-            "Copy INSTRUCTION_SENDER from config/extension.env into frontend/.env.local as NEXT_PUBLIC_INSTRUCTION_SENDER",
+            "bash scripts/pre-build.sh",
+            "bash scripts/start-services.sh",
+            "bash scripts/post-build.sh",
+            "Copy INSTRUCTION_SENDER into frontend/.env.local as NEXT_PUBLIC_INSTRUCTION_SENDER",
           ].map((line, i) => (
-            <li key={i} className="flex gap-2.5">
-              <span className="font-mono text-slate-600">{i + 1}</span>
-              <span className="font-mono text-xs leading-relaxed">{line}</span>
+            <li key={i} className="flex gap-3">
+              <span className="font-mono text-[13px] text-ink-400">{i + 1}</span>
+              <code className="font-mono text-[12.5px] leading-relaxed text-forest-900">
+                {line}
+              </code>
             </li>
           ))}
         </ol>
-        <p className="mt-5 text-xs text-slate-500">
-          Full instructions are in the README under “Running it for real”.
-        </p>
+        <div className="mt-6">
+          <Link
+            href="/"
+            className="text-[13.5px] text-signal-600 underline decoration-dotted underline-offset-2"
+          >
+            Back to the homepage
+          </Link>
+        </div>
       </Card>
-    </main>
+    </div>
   );
 }

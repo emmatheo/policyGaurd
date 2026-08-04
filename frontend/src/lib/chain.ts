@@ -111,10 +111,6 @@ function injectedProvider() {
   return provider as Parameters<typeof custom>[0] | undefined;
 }
 
-export function hasInjectedWallet(): boolean {
-  return injectedProvider() !== undefined;
-}
-
 /** Prompts for an account and makes sure the wallet is pointed at the active chain. */
 export async function connectWallet(): Promise<Address> {
   const provider = injectedProvider();

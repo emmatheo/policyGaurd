@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 
-/** A panel with the app's shared surface treatment. */
+/** A panel on the light product surface. */
 export function Card({
   children,
   className = "",
@@ -12,14 +12,19 @@ export function Card({
 }) {
   return (
     <section
-      className={`rounded-2xl border border-white/8 bg-ink-900/70 p-5 shadow-[0_1px_0_0_rgba(255,255,255,0.04)_inset] backdrop-blur sm:p-6 ${className}`}
+      className={`rounded-2xl border border-mint-200 bg-white p-5 sm:p-6 ${className}`}
     >
       {children}
     </section>
   );
 }
 
-/** A numbered step in the demo flow, dimmed until its prerequisites are met. */
+/**
+ * One step of the product flow.
+ *
+ * A step that is not yet reachable is dimmed and its controls are disabled, so the
+ * order is obvious without an explanation.
+ */
 export function StepCard({
   step,
   title,
@@ -36,21 +41,21 @@ export function StepCard({
   children: React.ReactNode;
 }) {
   return (
-    <Card className={enabled ? "" : "opacity-45"}>
+    <Card className={enabled ? "" : "opacity-55"}>
       <div className="flex items-start gap-4">
         <span
           aria-hidden
-          className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-sm font-semibold ${
+          className={`mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[14px] font-semibold ${
             done
-              ? "border-mint-500/40 bg-mint-500/15 text-mint-400"
-              : "border-white/12 bg-white/5 text-slate-300"
+              ? "bg-signal-500 text-forest-950"
+              : "bg-mint-100 text-forest-900"
           }`}
         >
           {done ? "✓" : step}
         </span>
         <div className="min-w-0 flex-1">
-          <h2 className="text-base font-semibold text-slate-100">{title}</h2>
-          <p className="mt-1 text-sm leading-relaxed text-slate-400">{description}</p>
+          <h2 className="text-[17px] font-semibold text-forest-950">{title}</h2>
+          <p className="mt-1 text-[14px] leading-relaxed text-ink-700">{description}</p>
           <div className="mt-4">{children}</div>
         </div>
       </div>
@@ -59,7 +64,7 @@ export function StepCard({
 }
 
 type ButtonProps = React.ButtonHTMLAttributes<HTMLButtonElement> & {
-  variant?: "primary" | "ghost" | "danger";
+  variant?: "primary" | "ghost";
   busy?: boolean;
 };
 
@@ -72,12 +77,10 @@ export function Button({
   ...rest
 }: ButtonProps) {
   const base =
-    "inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-flare-500 disabled:cursor-not-allowed disabled:opacity-45";
+    "inline-flex items-center justify-center gap-2 rounded-full px-5 py-2.5 text-[14px] font-medium transition focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-signal-600 disabled:cursor-not-allowed disabled:opacity-45";
   const variants = {
-    primary:
-      "bg-flare-500 text-white hover:bg-flare-400 active:bg-flare-600 shadow-lg shadow-flare-600/20",
-    ghost: "border border-white/12 bg-white/5 text-slate-200 hover:bg-white/10",
-    danger: "border border-flare-500/40 bg-flare-500/10 text-flare-400 hover:bg-flare-500/20",
+    primary: "bg-forest-950 text-white hover:bg-forest-800",
+    ghost: "border border-mint-200 bg-white text-forest-950 hover:bg-mint-50",
   } as const;
 
   return (
@@ -97,7 +100,6 @@ export function Button({
   );
 }
 
-/** A labelled text input with an optional trailing unit. */
 export function Field({
   label,
   hint,
@@ -111,24 +113,24 @@ export function Field({
   const id = rest.id ?? rest.name ?? label.replace(/\s+/g, "-").toLowerCase();
   return (
     <label htmlFor={id} className="block">
-      <span className="mb-1.5 block text-xs font-medium tracking-wide text-slate-400 uppercase">
+      <span className="mb-1.5 block text-[12px] font-medium tracking-wide text-ink-500 uppercase">
         {label}
       </span>
       <span className="relative block">
         <input
           id={id}
           {...rest}
-          className={`w-full rounded-xl border border-white/12 bg-ink-950/60 px-3.5 py-2.5 text-sm text-slate-100 placeholder:text-slate-600 focus:border-flare-500/60 focus:outline-none ${
+          className={`w-full rounded-xl border border-mint-200 bg-mint-50 px-3.5 py-2.5 text-[14px] text-forest-950 placeholder:text-ink-400 focus:border-signal-500 focus:bg-white focus:outline-none disabled:opacity-60 ${
             unit ? "pr-16" : ""
           }`}
         />
         {unit && (
-          <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-xs font-medium text-slate-500">
+          <span className="pointer-events-none absolute top-1/2 right-3.5 -translate-y-1/2 text-[12px] font-medium text-ink-400">
             {unit}
           </span>
         )}
       </span>
-      {hint && <span className="mt-1.5 block text-xs text-slate-500">{hint}</span>}
+      {hint && <span className="mt-1.5 block text-[12px] text-ink-500">{hint}</span>}
     </label>
   );
 }
@@ -137,37 +139,37 @@ export function Badge({
   tone = "neutral",
   children,
 }: {
-  tone?: "neutral" | "good" | "bad" | "warn";
+  tone?: "neutral" | "good" | "blocked" | "bad";
   children: React.ReactNode;
 }) {
   const tones = {
-    neutral: "border-white/12 bg-white/5 text-slate-300",
-    good: "border-mint-500/35 bg-mint-500/12 text-mint-400",
-    bad: "border-flare-500/40 bg-flare-500/12 text-flare-400",
-    warn: "border-amber-glow/35 bg-amber-glow/12 text-amber-glow",
+    neutral: "bg-mint-100 text-forest-900",
+    good: "bg-signal-500 text-forest-950",
+    blocked: "bg-block-500 text-forest-950",
+    bad: "bg-fail-500 text-white",
   } as const;
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium ${tones[tone]}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12.5px] font-medium ${tones[tone]}`}
     >
       {children}
     </span>
   );
 }
 
-/** A small live indicator dot. */
+/** A live status dot. */
 export function Dot({ ok }: { ok: boolean | null }) {
   const color =
-    ok === null ? "bg-slate-500" : ok ? "bg-mint-500" : "bg-flare-500";
-  return (
-    <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${color}`} />
-  );
+    ok === null ? "bg-ink-400" : ok ? "bg-signal-500 animate-live" : "bg-fail-500";
+  return <span aria-hidden className={`h-1.5 w-1.5 rounded-full ${color}`} />;
 }
 
 /**
- * A monospace value with a copy button. Signed blobs and XRPL addresses are the sort
- * of thing a viewer will want to paste elsewhere, and they are too long to retype.
+ * A monospace value with a copy button.
+ *
+ * Signed blobs and XRPL addresses are exactly what someone wants to paste elsewhere,
+ * and far too long to retype.
  */
 export function CopyableHex({
   label,
@@ -191,18 +193,18 @@ export function CopyableHex({
   }
 
   return (
-    <div className="rounded-xl border border-white/8 bg-ink-950/50 p-3">
+    <div className="rounded-xl border border-mint-200 bg-mint-50 p-3">
       <div className="mb-1.5 flex items-center justify-between gap-3">
-        <span className="text-xs font-medium tracking-wide text-slate-500 uppercase">
+        <span className="text-[11px] font-medium tracking-wide text-ink-500 uppercase">
           {label}
         </span>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           {href && (
             <a
               href={href}
               target="_blank"
               rel="noopener noreferrer"
-              className="text-xs text-slate-400 underline decoration-dotted underline-offset-2 hover:text-slate-200"
+              className="text-[12px] text-ink-500 underline decoration-dotted underline-offset-2 hover:text-forest-950"
             >
               explorer
             </a>
@@ -210,22 +212,35 @@ export function CopyableHex({
           <button
             type="button"
             onClick={copy}
-            className="text-xs text-slate-400 hover:text-slate-200"
+            className="text-[12px] text-ink-500 hover:text-forest-950"
           >
             {copied ? "copied" : "copy"}
           </button>
         </div>
       </div>
-      <p className="break-hex font-mono text-xs leading-relaxed text-slate-300">{value}</p>
+      <p className="break-hex font-mono text-[12px] leading-relaxed text-forest-900">
+        {value}
+      </p>
     </div>
   );
 }
 
-/** An inline error message. */
 export function ErrorNote({ children }: { children: React.ReactNode }) {
   return (
-    <p className="mt-3 rounded-xl border border-flare-500/30 bg-flare-500/10 px-3.5 py-2.5 text-sm text-flare-400">
+    <p className="rounded-xl border border-fail-500/25 bg-fail-500/8 px-3.5 py-2.5 text-[14px] text-fail-500">
       {children}
     </p>
+  );
+}
+
+/** Shown while an instruction is in flight, with a moving bar so it reads as working. */
+export function ProgressNote({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-mint-200 bg-mint-50">
+      <div className="h-0.5 w-full overflow-hidden bg-mint-200">
+        <div className="animate-sweep h-full w-1/3 bg-signal-500" />
+      </div>
+      <p className="px-3.5 py-2.5 font-mono text-[12.5px] text-ink-700">{children}</p>
+    </div>
   );
 }

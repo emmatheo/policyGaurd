@@ -1,62 +1,96 @@
 @import "tailwindcss";
 
+/**
+ * PolicyGuard design system.
+ *
+ * Two surfaces, used consistently: a deep forest green for anything that carries
+ * authority (navigation, the enclave, signed results) and a near-white mint for
+ * everything explanatory. Bright green marks what the system approved; amber and red
+ * mark what it refused. Colour is never the only signal — every state also carries a
+ * label — but it is the fastest one.
+ */
+
 @theme {
-  /* Roboto, injected by next/font in layout.tsx. Wiring it through Tailwind's own
-     font tokens means `font-sans` and `font-mono` resolve to it everywhere, including
-     in the demo route's existing markup. */
+  /* Forest — the dark surface. */
+  --color-forest-950: #05170c;
+  --color-forest-900: #0a2416;
+  --color-forest-850: #0d2e1c;
+  --color-forest-800: #123a24;
+  --color-forest-700: #1a4d31;
+  --color-forest-600: #246b44;
+
+  /* Green — approval, the live system, the accent. */
+  --color-signal-600: #16a34a;
+  --color-signal-500: #22c55e;
+  --color-signal-400: #4ade80;
+  --color-signal-300: #86efac;
+
+  /* Sky — the hero wash. */
+  --color-sky-400: #38bdf8;
+  --color-sky-300: #7dd3f0;
+  --color-sky-200: #bae6fd;
+  --color-sky-100: #d9eefb;
+
+  /* Mint — light section backgrounds. */
+  --color-mint-50: #f3faf6;
+  --color-mint-100: #e7f5ed;
+  --color-mint-200: #d3ebde;
+
+  /* Refusal. Not an error — a decision, so amber rather than red. */
+  --color-block-500: #f59e0b;
+  --color-block-600: #d97706;
+  --color-fail-500: #ef4444;
+
+  /* Ink. */
+  --color-ink-900: #0b1512;
+  --color-ink-700: #33443c;
+  --color-ink-500: #61756c;
+  --color-ink-400: #8b9d94;
+
+  /* Roboto, self-hosted by next/font. */
   --font-sans:
     var(--font-roboto), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono:
     var(--font-roboto-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
-
-  /* Demo surface palette. */
-  --color-ink-950: #07090f;
-  --color-ink-900: #0c1017;
-  --color-ink-850: #11161f;
-  --color-ink-800: #161c27;
-  --color-ink-700: #222a38;
-  --color-ink-600: #333d4e;
-
-  --color-flare-400: #ff8a7a;
-  --color-flare-500: #ff5f47;
-  --color-flare-600: #e8442c;
-
-  --color-mint-400: #4ade9a;
-  --color-mint-500: #22c77e;
-
-  --color-amber-glow: #fbbf5c;
 }
 
-html,
+html {
+  scroll-behavior: smooth;
+}
+
 body {
-  /* The landing owns the light shell; the demo route paints its own dark surface.
-     Keeping the background on the page rather than on body lets the two coexist
-     without one flashing the other's colour on navigation. */
-  background-color: #dededc;
-  color: #111111;
+  background-color: #ffffff;
+  color: var(--color-ink-900);
   -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
-/* The dark surface used by the PolicyGuard demo route. */
-.demo-surface {
-  background-color: var(--color-ink-950);
-  color: #e8ecf4;
-  background-image:
-    radial-gradient(60rem 30rem at 15% -10%, rgba(255, 95, 71, 0.1), transparent 60%),
-    radial-gradient(50rem 28rem at 92% 0%, rgba(34, 199, 126, 0.08), transparent 55%);
-  background-attachment: fixed;
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
 }
 
-/* Long hex strings (signed blobs, tx hashes) must wrap rather than widen the page. */
+/* Long hex strings — signed blobs, transaction ids — wrap instead of widening the page. */
 .break-hex {
   word-break: break-all;
   overflow-wrap: anywhere;
 }
 
-@keyframes pg-fade-up {
+/**
+ * The hexagon frame used by the "How it works" steps, matching the reference.
+ * A clip-path rather than an image keeps it crisp at any size and lets the fill
+ * follow the theme.
+ */
+.hex {
+  clip-path: polygon(50% 0%, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+}
+
+/* Entrances. */
+@keyframes pg-rise {
   from {
     opacity: 0;
-    transform: translateY(6px);
+    transform: translateY(10px);
   }
   to {
     opacity: 1;
@@ -64,30 +98,45 @@ body {
   }
 }
 
-.animate-fade-up {
-  animation: pg-fade-up 220ms ease-out both;
+.animate-rise {
+  animation: pg-rise 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
-/* The scroll indicator's drift. */
-@keyframes pg-cue {
+/* A slow pulse for the live indicator. */
+@keyframes pg-pulse {
   0%,
   100% {
-    transform: translateY(0);
-    opacity: 0.55;
+    opacity: 1;
+    transform: scale(1);
   }
   50% {
-    transform: translateY(4px);
-    opacity: 1;
+    opacity: 0.45;
+    transform: scale(0.82);
   }
 }
 
-.animate-cue {
-  animation: pg-cue 1.9s ease-in-out infinite;
+.animate-live {
+  animation: pg-pulse 2s ease-in-out infinite;
+}
+
+/* The progress shimmer while an instruction is in flight. */
+@keyframes pg-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(200%);
+  }
+}
+
+.animate-sweep {
+  animation: pg-sweep 1.4s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-fade-up,
-  .animate-cue {
+  .animate-rise,
+  .animate-live,
+  .animate-sweep {
     animation: none;
   }
 }

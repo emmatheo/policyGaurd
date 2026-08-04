@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import { BlockedIcon, SignedIcon } from "@/components/landing/icons";
 import { formatXRP } from "@/lib/format";
 import type { PaymentResponse } from "@/lib/protocol";
 import { submitTransaction, xrplTxUrl, type SubmitResult } from "@/lib/xrpl";
@@ -10,9 +11,9 @@ import { Badge, Button, CopyableHex, ErrorNote } from "./ui";
 /**
  * The enclave's verdict, exactly as it came back through the instruction pipeline.
  *
- * Approval and refusal get equal weight on purpose: a refusal is the product working,
- * and the reason string is the most important thing on the screen. Both arrived as a
- * successful, signed result from the TEE — neither is decided here.
+ * Approval and refusal are given equal visual weight on purpose: a refusal is the
+ * product working, and the reason is the most important thing on the screen. Refusal
+ * is amber rather than red for the same reason — it is a decision, not a fault.
  */
 export function VerdictCard({ verdict }: { verdict: PaymentResponse }) {
   const [submitting, setSubmitting] = useState(false);
@@ -36,37 +37,39 @@ export function VerdictCard({ verdict }: { verdict: PaymentResponse }) {
 
   return (
     <div
-      className={`animate-fade-up rounded-2xl border p-5 ${
+      className={`animate-rise rounded-2xl border p-5 ${
         verdict.approved
-          ? "border-mint-500/30 bg-mint-500/[0.06]"
-          : "border-flare-500/30 bg-flare-500/[0.06]"
+          ? "border-signal-500/35 bg-signal-500/[0.07]"
+          : "border-block-500/35 bg-block-500/[0.07]"
       }`}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Badge tone={verdict.approved ? "good" : "bad"}>
-          {verdict.approved ? "Signed by the TEE" : "Blocked by policy"}
+        <Badge tone={verdict.approved ? "good" : "blocked"}>
+          {verdict.approved ? <SignedIcon size={14} /> : <BlockedIcon size={14} />}
+          {verdict.approved ? "Signed by the enclave" : "Blocked by policy"}
         </Badge>
-        <span className="font-mono text-xs text-slate-500">
+        <span className="font-mono text-[12px] text-ink-500">
           request #{verdict.requestId.toString()}
         </span>
       </div>
 
-      <p className="mt-3 text-sm leading-relaxed text-slate-200">{verdict.reason}</p>
+      <p className="mt-4 text-[14.5px] leading-relaxed text-forest-950">
+        {verdict.reason}
+      </p>
 
-      <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
+      <dl className="mt-4 grid grid-cols-3 gap-2">
         {[
           { label: "Limit", value: formatXRP(verdict.limitDrops) },
           { label: "Spent", value: formatXRP(verdict.spentDrops) },
           { label: "Remaining", value: formatXRP(verdict.remainingDrops) },
         ].map((stat) => (
-          <div
-            key={stat.label}
-            className="rounded-xl border border-white/8 bg-ink-950/40 px-2 py-2.5"
-          >
-            <dt className="text-[11px] tracking-wide text-slate-500 uppercase">
+          <div key={stat.label} className="rounded-xl bg-white px-2 py-2.5 text-center">
+            <dt className="text-[11px] tracking-wide text-ink-400 uppercase">
               {stat.label}
             </dt>
-            <dd className="mt-0.5 font-mono text-sm text-slate-200">{stat.value}</dd>
+            <dd className="mt-0.5 font-mono text-[14px] text-forest-950">
+              {stat.value}
+            </dd>
           </div>
         ))}
       </dl>
@@ -81,7 +84,7 @@ export function VerdictCard({ verdict }: { verdict: PaymentResponse }) {
               <Button variant="ghost" onClick={submit} busy={submitting}>
                 Submit to XRPL testnet
               </Button>
-              <p className="mt-2 text-xs text-slate-500">
+              <p className="mt-2 text-[12.5px] text-ink-500">
                 Optional. The enclave&apos;s job ends at the signature — submitting
                 happens outside the trust boundary and needs the wallet to be funded.
               </p>
@@ -90,14 +93,16 @@ export function VerdictCard({ verdict }: { verdict: PaymentResponse }) {
 
           {submitted && (
             <div
-              className={`rounded-xl border px-3.5 py-3 text-sm ${
+              className={`rounded-xl border px-3.5 py-3 ${
                 submitted.accepted
-                  ? "border-mint-500/30 bg-mint-500/10 text-mint-400"
-                  : "border-amber-glow/30 bg-amber-glow/10 text-amber-glow"
+                  ? "border-signal-500/30 bg-signal-500/10"
+                  : "border-block-500/30 bg-block-500/10"
               }`}
             >
-              <p className="font-medium">{submitted.engineResult}</p>
-              <p className="mt-1 text-xs text-slate-400">
+              <p className="font-mono text-[13px] font-medium text-forest-950">
+                {submitted.engineResult}
+              </p>
+              <p className="mt-1 text-[12.5px] text-ink-700">
                 {submitted.engineResultMessage}
               </p>
               {submitted.txHash && (
@@ -105,7 +110,7 @@ export function VerdictCard({ verdict }: { verdict: PaymentResponse }) {
                   href={xrplTxUrl(submitted.txHash)}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="mt-2 inline-block text-xs underline decoration-dotted underline-offset-2"
+                  className="mt-2 inline-block text-[12.5px] text-signal-600 underline decoration-dotted underline-offset-2"
                 >
                   View on the XRPL explorer
                 </a>

@@ -67,9 +67,38 @@ Being precise about this matters more than claiming everything works.
 
 | Network | Status | Why |
 |---|---|---|
-| **Coston2** | **Live.** Built and tested here. | The only network with a public FCC contract set — `FlareTeeManager` at [`0x1a9C…18aE`](https://coston2-explorer.flare.network/address/0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE). |
+| **Coston2** | **Live. Contract deployed.** | The only network with a public FCC contract set — `FlareTeeManager` at [`0x1a9C…18aE`](https://coston2-explorer.flare.network/address/0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE). |
 | **Songbird** | **Prepared, not live.** [`.env.songbird.example`](.env.songbird.example) | The FCC rollout was approved by governance, but the contract set is not published in the official address book. There is no `FlareTeeManager` address to point at. |
 | **Flare mainnet** | **Prepared, not live.** [`.env.flare.example`](.env.flare.example) | Flare's own documentation describes FCC as *"in the final stages of development and not yet a fully public production system."* No public mainnet contract set exists. |
+
+### Deployed on Coston2
+
+| | |
+|---|---|
+| **InstructionSender** | [`0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3`](https://coston2-explorer.flare.network/address/0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3) |
+| Deploy transaction | [`0xd8441979…c333f7`](https://coston2-explorer.flare.network/tx/0xd84419798076b0afe8ce602319aa70d5b7501ec38fd7d479590486e570c333f7) |
+| Both registries | `0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE` (the FCC diamond) |
+| `extensionId()` | **0 — not yet registered** |
+
+Recorded in [`config/coston2/policyguard.json`](config/coston2/policyguard.json). Verify it
+yourself:
+
+```bash
+cast call --rpc-url https://coston2-api.flare.network/ext/C/rpc \
+  0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3 'TEE_EXTENSION_REGISTRY()(address)'
+```
+
+**What that zero means.** The contract is deployed, readable, and wired to the real FCC
+diamond, but it cannot dispatch instructions until the TEE extension is registered and
+`setExtensionId()` is called. Registration needs the full stack from
+[Running it for real](#running-it-for-real), including **Coston2 indexer database
+credentials that only Flare support can issue**. Without them the extension proxy cannot
+follow the chain.
+
+So: the contract half of the system is live and verifiable on a public explorer; the
+enclave half is not yet registered against it. The app reports this state plainly rather
+than pretending a decision came back — that is what the *"extension id is unset"* banner
+on `/app` is for.
 
 The Songbird and Flare env files have **empty** address and proxy fields. That is
 deliberate: inventing plausible-looking addresses would produce something that appears
@@ -197,7 +226,7 @@ npm install && npm run dev
 
 ## For a judge
 
-Once the stack above is running, at `http://localhost:3000/demo`:
+Once the stack above is running, at `http://localhost:3000/app`:
 
 1. **Connect a wallet.** The header shows the contract address and its extension id,
    both read from Coston2.

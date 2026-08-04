@@ -1,0 +1,21 @@
+{
+  "_comment": "PolicyGuard's own deployment on Coston2. Flare's contract addresses live in deployed-addresses.json; this file records only what this project deployed.",
+  "network": "coston2",
+  "chainId": 114,
+  "rpc": "https://coston2-api.flare.network/ext/C/rpc",
+  "currency": "C2FLR",
+  "explorer": "https://coston2-explorer.flare.network",
+  "contracts": {
+    "InstructionSender": {
+      "address": "0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3",
+      "deployTx": "0xd84419798076b0afe8ce602319aa70d5b7501ec38fd7d479590486e570c333f7",
+      "deployer": "0x764377752663Fa8AF23226C87dCBCDC270BB7432",
+      "constructorArgs": {
+        "teeExtensionRegistry": "0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE",
+        "teeMachineRegistry": "0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE"
+      }
+    }
+  },
+  "extensionId": 0,
+  "_extensionIdNote": "Zero until the TEE extension is registered and setExtensionId() is called. Until then the contract is deployed and readable but cannot dispatch instructions, and the app says so rather than pretending otherwise. Registration needs the full FCC stack, which requires Coston2 indexer credentials from Flare support."
+}
