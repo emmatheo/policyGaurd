@@ -10,9 +10,13 @@ Submission for the Flare Summer Signal hackathon — Confidential Compute Apps t
 check it. The same material is in [The two halves, and which one runs](#the-two-halves-and-which-one-runs) below.
 
 > **One click, nothing to configure.** The live Coston2 address is compiled in as a
-> default, so there are no environment variables to set. The only setting that matters
-> is **Root Directory = `frontend`**, which the button above passes automatically — if
-> you imported the repo by hand, set it in *Project Settings → General*.
+> default, so there are no environment variables to set.
+>
+> **If you imported the repo by hand**, set **Root Directory** to `frontend` on the
+> import screen (or *Settings → General* on an existing project). Leaving it at `./`
+> makes Vercel install the root `package.json`, which has no dependencies, and the
+> build then fails with `next: command not found`. The button above sets it for you,
+> and a root `vercel.json` covers the case where it is left at `./`.
 
 ---
 
