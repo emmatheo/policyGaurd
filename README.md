@@ -129,7 +129,27 @@ Registering a machine is `scripts/post-build.sh`, which needs the TEE stack runn
 a public HTTPS proxy. That proxy's config
 ([`config/proxy/extension_proxy.coston2.docker.toml.example`](config/proxy/extension_proxy.coston2.docker.toml.example))
 requires a `[db]` block of **Coston2 indexer database credentials that only Flare support
-issues** — without them the proxy cannot follow the chain.
+issues**.
+
+This was tested rather than assumed. The full stack builds and starts; `redis` and the TEE
+container come up, and the proxy then dies immediately:
+
+```
+$ docker compose ps -a
+flarenetwork-extension-tee-1   Up
+flarenetwork-redis-1           Up
+flarenetwork-ext-proxy-1       Exited (2)
+
+$ docker logs flarenetwork-ext-proxy-1
+panic: connecting to database: opening mysql connection to
+<indexer-db-host>:3306/<indexer-db-name> as <indexer-db-user>:
+dial tcp: lookup <indexer-db-host>: no such host
+    tee-proxy/internal/proxy/proxy.go:49
+```
+
+The database connection is the first thing `proxy.Run` does, before it serves anything.
+There is no offline or degraded mode to fall back on, so the credentials are a hard
+prerequisite rather than an optimisation.
 
 So the on-chain half is complete and publicly auditable; the enclave half needs one
 credential set that cannot be self-served. `/app` reads both conditions on load and names
