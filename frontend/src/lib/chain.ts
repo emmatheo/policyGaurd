@@ -100,9 +100,11 @@ export const instructionSenderAbi = parseAbi([
   "function nextWalletId() view returns (uint64)",
   "function nextRequestId() view returns (uint64)",
   "function extensionId() view returns (uint256)",
-  "event WalletCreated(uint64 indexed walletId, address indexed owner)",
-  "event DailyLimitSet(uint64 indexed walletId, uint64 limitDrops)",
-  "event PaymentRequested(uint64 indexed walletId, uint64 indexed requestId, string destination, uint64 amountDrops, uint64 limitDrops)",
+  "function isTeeAvailable() view returns (bool)",
+  "event WalletCreated(uint64 indexed walletId, address indexed owner, bool teeDispatched)",
+  "event TeeUnavailable(bytes32 opType, bytes32 opCommand)",
+  "event DailyLimitSet(uint64 indexed walletId, uint64 limitDrops, bool teeDispatched)",
+  "event PaymentRequested(uint64 indexed walletId, uint64 indexed requestId, string destination, uint64 amountDrops, uint64 limitDrops, bool teeDispatched)",
 ]);
 
 function injectedProvider() {
@@ -288,4 +290,19 @@ export function explorerTxUrl(txHash: string): string {
 
 export function explorerAddressUrl(address: string): string {
   return `${activeChain.blockExplorers?.default.url}/address/${address}`;
+}
+
+/**
+ * The contract's own answer to "can I reach an enclave right now".
+ *
+ * Read before every action so the UI can state which half of the system will run.
+ * With no machine registered the on-chain policy record is still written, but no
+ * signature can be produced by anyone — and saying so is the point.
+ */
+export async function readIsTeeAvailable(): Promise<boolean> {
+  return publicClient.readContract({
+    address: contractAddress(),
+    abi: instructionSenderAbi,
+    functionName: "isTeeAvailable",
+  });
 }

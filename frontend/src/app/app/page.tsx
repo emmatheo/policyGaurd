@@ -8,6 +8,7 @@ import { ActivityLog } from "@/components/ActivityLog";
 import { Logo } from "@/components/brand";
 import { PolicyMeter } from "@/components/PolicyMeter";
 import { VerdictCard } from "@/components/VerdictCard";
+import { PartialOutcome, ZoneBanner, ZoneTag } from "@/components/ZoneBanner";
 import {
   Badge,
   Button,
@@ -26,13 +27,20 @@ import {
   explorerAddressUrl,
   INSTRUCTION_SENDER,
   isConfigured,
+  explorerTxUrl,
   readActiveTeeMachines,
   readExtensionId,
+  readIsTeeAvailable,
   readWallet,
   requestPaymentTx,
   setDailyLimitTx,
 } from "@/lib/chain";
-import { ACTION_STATUS, sendInstruction, type DispatchedInstruction } from "@/lib/fcc";
+import {
+  ACTION_STATUS,
+  awaitEnclaveResult,
+  submitOperation,
+  type OperationOutcome,
+} from "@/lib/fcc";
 import { formatXRP, parseXRP, truncate } from "@/lib/format";
 import {
   decodeCreateResponse,
@@ -41,7 +49,11 @@ import {
   type PaymentResponse,
 } from "@/lib/protocol";
 import type { LogEntry } from "@/lib/types";
-import { fetchAccountContext, XRPL_FAUCET_URL, xrplAccountUrl } from "@/lib/xrpl";
+import {
+  fetchAccountContext,
+  XRPL_FAUCET_URL,
+  xrplAccountUrl,
+} from "@/lib/xrpl";
 
 /** A well-known XRPL testnet address, pre-filled so nothing has to be set up first. */
 const DEFAULT_DESTINATION = "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh";
@@ -68,6 +80,12 @@ export default function App() {
   const [extensionId, setExtensionId] = useState<bigint | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
   const [teeMachines, setTeeMachines] = useState<number | null>(null);
+  const [teeAvailable, setTeeAvailable] = useState<boolean | null>(null);
+  /** Set when a step was written on-chain but never reached an enclave. */
+  const [partial, setPartial] = useState<{
+    what: string;
+    txHash: string;
+  } | null>(null);
 
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [policy, setPolicy] = useState<PolicyState>({
@@ -94,8 +112,8 @@ export default function App() {
     );
   }, []);
 
-  // Check the two setup conditions that make every send revert, so they are reported
-  // before anything is clicked rather than as an opaque wallet error afterwards.
+  // Read the setup state. A missing enclave is reported as a zone being unavailable,
+  // not as a page-level error: the on-chain half still works and should stay usable.
   useEffect(() => {
     if (!isConfigured) return;
     (async () => {
@@ -105,22 +123,17 @@ export default function App() {
       if (id === 0n) {
         setSetupError(
           "The contract is deployed but its extension id is unset. Register the extension, " +
-            "then call setExtensionId() — until then no instruction can be dispatched.",
+            "then call setExtensionId().",
         );
         return;
       }
 
-      // The registry picks a random active machine per instruction. With none
-      // registered it reverts TooMany(), which explains nothing on its own.
-      const machines = await readActiveTeeMachines(id);
+      const [available, machines] = await Promise.all([
+        readIsTeeAvailable(),
+        readActiveTeeMachines(id),
+      ]);
+      setTeeAvailable(available);
       setTeeMachines(machines.length);
-      if (machines.length === 0) {
-        setSetupError(
-          `Extension ${id} is registered, but no TEE machine has joined it yet, so there is ` +
-            "no enclave to answer. Start the TEE stack and run scripts/post-build.sh to " +
-            "register one. Until then every request reverts with TooMany().",
-        );
-      }
     })().catch((e) =>
       setSetupError(
         `Could not read the contract at ${INSTRUCTION_SENDER} on ${activeChain.name}: ${
@@ -131,47 +144,48 @@ export default function App() {
   }, []);
 
   /**
-   * Runs one instruction end to end: sign the transaction, wait for the registry to
-   * dispatch it, then wait for the enclave to answer through the proxy.
+   * Runs one operation, keeping the two halves separate.
+   *
+   * The transaction is mined first and the on-chain outcome reported regardless. Only
+   * if the contract actually dispatched an instruction does this wait for an enclave
+   * result — there is no branch that produces one otherwise.
    */
-  const runInstruction = useCallback(
+  const runOperation = useCallback(
     async (label: string, send: () => Promise<Hash>) => {
+      setPartial(null);
       setProgress("Waiting for wallet signature…");
       const txHash = await send();
 
       setProgress(`Mining ${truncate(txHash, 10, 6)} on ${activeChain.name}…`);
+      const outcome = await submitOperation(txHash);
+
       addLog({
-        kind: "info",
-        title: `${label} submitted`,
-        detail: "Waiting for the registry to dispatch the instruction.",
+        kind: "success",
+        title: `${label} recorded on ${activeChain.name}`,
+        detail: outcome.teeDispatched
+          ? "Instruction dispatched to the enclave."
+          : "On-chain record written. No enclave registered, so nothing was dispatched.",
         chainTx: txHash,
       });
 
-      let dispatched: DispatchedInstruction | null = null;
-      const { instruction, result } = await sendInstruction(txHash, {
-        onProgress: (attempt, elapsed) => {
-          if (dispatched) {
-            setProgress(
-              `Awaiting the enclave — instruction ${truncate(dispatched.instructionId, 10, 6)}, ` +
-                `${Math.round(elapsed / 1000)}s (attempt ${attempt})`,
-            );
-          }
-        },
-      });
-      dispatched = instruction;
+      if (!outcome.teeDispatched || !outcome.instruction) {
+        return { outcome, result: null };
+      }
 
-      addLog({
-        kind: "info",
-        title: "Instruction dispatched by the registry",
-        detail: `id ${instruction.instructionId} — routed to ${instruction.proxyUrls.length} TEE machine(s).`,
-        chainTx: txHash,
+      const instruction = outcome.instruction;
+      const result = await awaitEnclaveResult(instruction, {
+        onProgress: (attempt, elapsed) =>
+          setProgress(
+            `Awaiting the enclave — instruction ${truncate(instruction.instructionId, 10, 6)}, ` +
+              `${Math.round(elapsed / 1000)}s (attempt ${attempt})`,
+          ),
       });
 
       if (result.status === ACTION_STATUS.ERROR) {
         throw new Error(result.log || "The enclave rejected the instruction.");
       }
 
-      return { instruction, result, txHash };
+      return { outcome, result };
     },
     [addLog],
   );
@@ -193,9 +207,20 @@ export default function App() {
     setBusy("wallet");
     setError(null);
     try {
-      const { result, txHash } = await runInstruction("Create wallet", () =>
+      const { outcome, result } = await runOperation("Create wallet", () =>
         createWalletTx(account),
       );
+
+      if (!result) {
+        // Recorded on-chain; the enclave was never asked, so there is no XRPL
+        // identity to show. Saying so is the whole point.
+        setPartial({
+          what: `Wallet ${outcome.walletId} exists on Flare with you as its owner, but no XRPL keypair has been generated — that happens only inside the enclave.`,
+          txHash: outcome.txHash,
+        });
+        return;
+      }
+
       const created = decodeCreateResponse(result.data);
 
       setWallet({
@@ -216,7 +241,7 @@ export default function App() {
         kind: "success",
         title: `Wallet ${created.walletId} created in the enclave`,
         detail: `${created.classicAddress} — the key was generated inside the TEE and has no export path.`,
-        chainTx: txHash,
+        chainTx: outcome.txHash,
       });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -235,26 +260,35 @@ export default function App() {
     setError(null);
     try {
       const limitDrops = parseXRP(limitInput);
-      const { result, txHash } = await runInstruction("Set daily limit", () =>
+      const { outcome, result } = await runOperation("Set daily limit", () =>
         setDailyLimitTx(account, wallet.walletId, limitDrops),
       );
-      const applied = decodeSetLimitResponse(result.data);
 
       // Read the limit back from the contract rather than trusting the input: the
-      // published record is the auditable half of the policy.
+      // published record is the auditable half of the policy, and it is written
+      // whether or not an enclave was reachable.
       const onChain = await readWallet(wallet.walletId);
-
       setPolicy((prev) => ({
         ...prev,
         limitDrops: onChain.dailyLimitDrops,
         remainingDrops: onChain.dailyLimitDrops - prev.spentDrops,
       }));
 
+      if (!result) {
+        setPartial({
+          what: `The ${formatXRP(onChain.dailyLimitDrops)} XRP limit is published on Flare and anyone can read it. The enclave has not been told, because there is no enclave registered.`,
+          txHash: outcome.txHash,
+        });
+        return;
+      }
+
+      const applied = decodeSetLimitResponse(result.data);
+
       addLog({
         kind: "success",
-        title: `Daily limit set to ${formatXRP(applied.limitDrops)} XRP`,
+        title: `Enclave applied a ${formatXRP(applied.limitDrops)} XRP limit`,
         detail: `Published on ${activeChain.name} and applied in-enclave.`,
-        chainTx: txHash,
+        chainTx: outcome.txHash,
       });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
@@ -292,7 +326,7 @@ export default function App() {
         });
       }
 
-      const { result, txHash } = await runInstruction("Request payment", () =>
+      const { outcome, result } = await runOperation("Request payment", () =>
         requestPaymentTx(account, {
           walletId: wallet.walletId,
           destination,
@@ -302,6 +336,14 @@ export default function App() {
           lastLedgerSequence,
         }),
       );
+
+      if (!result) {
+        setPartial({
+          what: `Request ${outcome.requestId} for ${formatXRP(amountDrops)} XRP is recorded on Flare against a ${formatXRP(outcome.limitDrops ?? 0n)} XRP limit. No verdict exists: only the enclave can evaluate the policy, and only the enclave can sign.`,
+          txHash: outcome.txHash,
+        });
+        return;
+      }
 
       const decision = decodePaymentResponse(result.data);
       setVerdict(decision);
@@ -319,12 +361,16 @@ export default function App() {
           ? "Approved — the enclave signed an XRPL payment"
           : "Blocked — the policy refused",
         detail: decision.reason,
-        chainTx: txHash,
+        chainTx: outcome.txHash,
       });
     } catch (e) {
       const message = e instanceof Error ? e.message : String(e);
       setError(message);
-      addLog({ kind: "error", title: "Request payment failed", detail: message });
+      addLog({
+        kind: "error",
+        title: "Request payment failed",
+        detail: message,
+      });
     } finally {
       setBusy(null);
       setProgress(null);
@@ -352,12 +398,16 @@ export default function App() {
           </Card>
         )}
 
+        <div className="mb-6">
+          <ZoneBanner teeAvailable={teeAvailable} />
+        </div>
+
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
           <div className="space-y-4">
             <StepCard
               step={1}
               title="Create wallet"
-              description="The enclave generates an XRPL keypair and returns only the address. There is no seed phrase, because no secret exists outside the TEE."
+              description="Registers the wallet on Flare, then asks the enclave to generate its XRPL keypair. The record is on-chain; the keypair is confidential."
               enabled={ready}
               done={wallet !== null}
             >
@@ -396,8 +446,8 @@ export default function App() {
             <StepCard
               step={2}
               title="Set policy"
-              description="Publish a daily spending limit on Flare. The enclave stores its own copy and applies whichever of the two is stricter."
-              enabled={ready && wallet !== null}
+              description="Publishes the daily limit on Flare, where anyone can audit it, and tells the enclave to apply it."
+              enabled={ready}
               done={limitSet}
             >
               <div className="flex flex-wrap items-end gap-3">
@@ -425,8 +475,8 @@ export default function App() {
             <StepCard
               step={3}
               title="Send payment"
-              description="The enclave adds up the last 24 hours and decides. Under the limit it signs a real XRPL payment; over it, you get a reason and nothing else."
-              enabled={ready && wallet !== null && limitSet}
+              description="Records the request on Flare, then asks the enclave to evaluate the rolling 24h spend and sign — or refuse with a reason."
+              enabled={ready && limitSet}
             >
               <div className="space-y-3">
                 <Field
@@ -466,6 +516,14 @@ export default function App() {
               )}
             </StepCard>
 
+            {partial && (
+              <PartialOutcome
+                what={partial.what}
+                txHash={partial.txHash}
+                explorerUrl={explorerTxUrl(partial.txHash)}
+              />
+            )}
+
             {progress && <ProgressNote>{progress}</ProgressNote>}
             {error && <ErrorNote>{error}</ErrorNote>}
           </div>
@@ -504,7 +562,9 @@ function AppHeader({
       <div className="mx-auto flex max-w-[1200px] items-center justify-between gap-4 px-5 py-3.5 sm:px-8">
         <Link href="/" className="flex items-center gap-2.5">
           <Logo size={24} className="text-white" />
-          <span className="text-[16px] font-medium text-white">PolicyGuard</span>
+          <span className="text-[16px] font-medium text-white">
+            PolicyGuard
+          </span>
         </Link>
 
         <div className="flex items-center gap-3">
@@ -558,9 +618,9 @@ function NotConfigured() {
           No contract is set
         </h1>
         <p className="mt-3 text-[14.5px] leading-relaxed text-ink-700">
-          PolicyGuard has no offline mode. Every wallet, policy change, and payment
-          decision is dispatched by a contract on Flare and answered by a TEE, so
-          without a deployed contract there is nothing to show.
+          PolicyGuard has no offline mode. Every wallet, policy change, and
+          payment decision is dispatched by a contract on Flare and answered by
+          a TEE, so without a deployed contract there is nothing to show.
         </p>
         <ol className="mt-5 space-y-2">
           {[
@@ -570,7 +630,9 @@ function NotConfigured() {
             "Copy INSTRUCTION_SENDER into frontend/.env.local as NEXT_PUBLIC_INSTRUCTION_SENDER",
           ].map((line, i) => (
             <li key={i} className="flex gap-3">
-              <span className="font-mono text-[13px] text-ink-400">{i + 1}</span>
+              <span className="font-mono text-[13px] text-ink-400">
+                {i + 1}
+              </span>
               <code className="font-mono text-[12.5px] leading-relaxed text-forest-900">
                 {line}
               </code>

@@ -109,11 +109,20 @@ contract InstructionSender {
     // Events.
     // ---------------------------------------------------------------------
 
-    /// @notice Emitted when a wallet is registered and a CREATE instruction is sent.
-    event WalletCreated(uint64 indexed walletId, address indexed owner);
+    /// @notice Emitted when a wallet is registered on-chain.
+    /// @param teeDispatched True if WALLET/CREATE reached the enclave. False means the
+    ///        record exists but no XRPL keypair has been generated for it yet.
+    event WalletCreated(uint64 indexed walletId, address indexed owner, bool teeDispatched);
+
+    /// @notice Emitted when an instruction could not be dispatched because no TEE
+    /// machine is registered to this extension.
+    /// @dev Deliberately loud. The on-chain half of the operation succeeded and the
+    ///      confidential half did not, and conflating the two would be dishonest.
+    event TeeUnavailable(bytes32 opType, bytes32 opCommand);
 
     /// @notice Emitted when the rolling 24h limit changes.
-    event DailyLimitSet(uint64 indexed walletId, uint64 limitDrops);
+    /// @param teeDispatched True if POLICY/SET_LIMIT reached the enclave.
+    event DailyLimitSet(uint64 indexed walletId, uint64 limitDrops, bool teeDispatched);
 
     /// @notice Emitted for every payment request forwarded to the enclave.
     /// @dev The verdict is deliberately absent — it comes back through the TEE
@@ -123,7 +132,8 @@ contract InstructionSender {
         uint64 indexed requestId,
         string destination,
         uint64 amountDrops,
-        uint64 limitDrops
+        uint64 limitDrops,
+        bool teeDispatched
     );
 
     // ---------------------------------------------------------------------
@@ -190,9 +200,8 @@ contract InstructionSender {
         });
         _walletsByOwner[msg.sender].push(walletId);
 
-        emit WalletCreated(walletId, msg.sender);
-
-        _send(OP_TYPE_WALLET, OP_COMMAND_CREATE, abi.encode(walletId, msg.sender));
+        bool dispatched = _send(OP_TYPE_WALLET, OP_COMMAND_CREATE, abi.encode(walletId, msg.sender));
+        emit WalletCreated(walletId, msg.sender, dispatched);
     }
 
     /// @notice Sets or updates the rolling 24h spending limit for a wallet.
@@ -203,9 +212,8 @@ contract InstructionSender {
 
         _wallets[_walletId].dailyLimitDrops = _limitDrops;
 
-        emit DailyLimitSet(_walletId, _limitDrops);
-
-        _send(OP_TYPE_POLICY, OP_COMMAND_SET_LIMIT, abi.encode(_walletId, _limitDrops));
+        bool dispatched = _send(OP_TYPE_POLICY, OP_COMMAND_SET_LIMIT, abi.encode(_walletId, _limitDrops));
+        emit DailyLimitSet(_walletId, _limitDrops, dispatched);
     }
 
     /// @notice Asks the TEE to evaluate the active policy and, if it passes, sign
@@ -238,9 +246,7 @@ contract InstructionSender {
         requestId = nextRequestId++;
         uint64 limitDrops = _wallets[_walletId].dailyLimitDrops;
 
-        emit PaymentRequested(_walletId, requestId, _destination, _amountDrops, limitDrops);
-
-        _send(
+        bool dispatched = _send(
             OP_TYPE_PAYMENT,
             OP_COMMAND_REQUEST,
             abi.encode(
@@ -256,6 +262,8 @@ contract InstructionSender {
                 uint64(block.timestamp)
             )
         );
+
+        emit PaymentRequested(_walletId, requestId, _destination, _amountDrops, limitDrops, dispatched);
     }
 
     // ---------------------------------------------------------------------
@@ -302,7 +310,19 @@ contract InstructionSender {
     ///      the extension's default data-provider consensus rules. Populating it
     ///      would additionally require those providers to co-sign before the
     ///      enclave accepts the instruction.
-    function _send(bytes32 _opType, bytes32 _opCommand, bytes memory _message) internal {
+    function _send(bytes32 _opType, bytes32 _opCommand, bytes memory _message)
+        internal
+        returns (bool dispatched)
+    {
+        // No registered machine means there is no enclave to answer. Asking the
+        // registry for one of zero reverts with TooMany(), which would take the
+        // on-chain policy record down with it — so the availability check happens
+        // here, and the caller is told which of the two halves actually ran.
+        if (!isTeeAvailable()) {
+            emit TeeUnavailable(_opType, _opCommand);
+            return false;
+        }
+
         address[] memory teeIds = TEE_MACHINE_REGISTRY.getRandomTeeIds(_getExtensionId(), 1);
         address[] memory cosigners = new address[](0);
 
@@ -316,6 +336,18 @@ contract InstructionSender {
         });
 
         TEE_EXTENSION_REGISTRY.sendInstructions{value: msg.value}(teeIds, params);
+        return true;
+    }
+
+    /// @notice Whether any TEE machine is currently registered to this extension.
+    /// @dev The public, on-chain answer to "can this contract reach an enclave right
+    ///      now". Callers should read this before assuming a payment will be
+    ///      evaluated: with no machine, the policy record is still written and
+    ///      auditable, but no signature can be produced by anyone.
+    /// @return True when at least one active machine is available.
+    function isTeeAvailable() public view returns (bool) {
+        if (_extensionId == 0) return false;
+        return TEE_MACHINE_REGISTRY.getActiveTeeMachines(_extensionId).length > 0;
     }
 
     /// @dev Reverts unless the caller owns an existing wallet.

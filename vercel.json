@@ -6,7 +6,7 @@
   "installCommand": "cd frontend && npm install",
   "outputDirectory": "frontend/.next",
   "env": {
-    "NEXT_PUBLIC_INSTRUCTION_SENDER": "0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3",
+    "NEXT_PUBLIC_INSTRUCTION_SENDER": "0x494bd161F29F4024d91408AC1d480EF960f91348",
     "NEXT_PUBLIC_FLARE_NETWORK": "coston2",
     "NEXT_PUBLIC_FLARE_RPC": "https://coston2-api.flare.network/ext/C/rpc",
     "NEXT_PUBLIC_INSTRUCTION_FEE_WEI": "1000000000000",

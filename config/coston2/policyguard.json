@@ -7,25 +7,28 @@
   "explorer": "https://coston2-explorer.flare.network",
   "contracts": {
     "InstructionSender": {
-      "address": "0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3",
-      "deployTx": "0xd84419798076b0afe8ce602319aa70d5b7501ec38fd7d479590486e570c333f7",
+      "address": "0x494bd161F29F4024d91408AC1d480EF960f91348",
+      "deployTx": "0x9fbd5436e24a72f585ef1b2cc3d3b0b9b26e93af846ff6d917086863c806fa53",
       "deployer": "0x764377752663Fa8AF23226C87dCBCDC270BB7432",
       "constructorArgs": {
         "teeExtensionRegistry": "0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE",
         "teeMachineRegistry": "0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE"
       },
       "sourceVerified": true,
-      "verifiedAt": "https://coston2-explorer.flare.network/address/0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3#code"
+      "verifiedAt": "https://coston2-explorer.flare.network/address/0x494bd161F29F4024d91408AC1d480EF960f91348#code"
     }
   },
-  "extensionId": 65954,
-  "setExtensionIdTx": "0x97ceeab7373d19ee7052357067f29c0c419da4c64f8dd40bc6eb958261b5c22a",
+  "extensionId": 65955,
+  "setExtensionIdTx": "0x08801741ff34364762260fbfe186ae240b79d75b3949536b869af071be8f01da",
   "_extensionIdNote": "Registered on-chain and wired into the contract. Extension registration is entirely on-chain and needed no proxy or indexer.",
   "activeTeeMachines": 0,
-  "_teeMachineNote": "No TEE machine has joined extension 65954 yet, so getRandomTeeIds(id, 1) reverts TooMany(). Registering one requires the TEE stack running behind a public HTTPS proxy, whose config needs Coston2 indexer database credentials that only Flare support issues.",
-  "_observedReverts": {
-    "_comment": "Measured against the live contract with eth_call, not assumed. Both confirm the contract refuses to dispatch rather than failing silently.",
-    "beforeRegistration": { "createWallet()": "Extension ID is not set.", "setExtensionId()": "Extension ID not found." },
-    "afterRegistration": { "setExtensionId()": "succeeded, extensionId() = 65954", "createWallet()": "reverts TooMany() — no active TEE machine to route to" }
+  "_teeMachineNote": "No TEE machine has joined extension 65955. _send() checks availability and emits TeeUnavailable instead of reverting, so the on-chain policy record still succeeds. Registering a machine needs Coston2 indexer database credentials from Flare support; see scripts/enable-tee.sh.",
+  "isTeeAvailable": false,
+  "provenOnChain": {
+    "_comment": "Executed against the live contract, not asserted.",
+    "createWallet": "0x361cc74cebb0ca81be8b4586048a42dd76110031ed43001abfe7350ff4fdc088",
+    "setDailyLimit": "0xb6104829353ee1e7f648a7a35efef772f4b0cfebb45f644820d649bd5e82dc9e",
+    "requestPayment": "0x9bf56b6d2dda0989799e74b7a6bd06703ab8e51d565f8e257744e65d95e6cf7d",
+    "allEmitted": "TeeUnavailable \u2014 the on-chain half ran, the enclave was never asked"
   }
 }

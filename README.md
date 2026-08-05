@@ -6,6 +6,9 @@ Submission for the Flare Summer Signal hackathon — Confidential Compute Apps t
 
 [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Femmatheo%2FpolicyGaurd&project-name=policyguard-xrpl&repository-name=policyguard-xrpl)
 
+**Judges:** the deployed app has a `/verify` page listing every claim with the command to
+check it. The same material is in [The two halves, and which one runs](#the-two-halves-and-which-one-runs) below.
+
 > **One click, nothing to configure.** [`vercel.json`](vercel.json) already carries the
 > live Coston2 contract address and RPC, so the deployed app connects to the real
 > contract immediately. `/app` reads the chain and reports the current setup state —
@@ -80,59 +83,45 @@ Being precise about this matters more than claiming everything works.
 
 | | |
 |---|---|
-| **InstructionSender** | [`0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3`](https://coston2-explorer.flare.network/address/0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3) |
-| Source | **Verified** — [read it on the explorer](https://coston2-explorer.flare.network/address/0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3#code) |
-| Deploy transaction | [`0xd8441979…c333f7`](https://coston2-explorer.flare.network/tx/0xd84419798076b0afe8ce602319aa70d5b7501ec38fd7d479590486e570c333f7) |
-| Both registries | `0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE` (the FCC diamond) |
-| Extension | **Registered, id `65954`** ([`setExtensionId` tx](https://coston2-explorer.flare.network/tx/0x97ceeab7373d19ee7052357067f29c0c419da4c64f8dd40bc6eb958261b5c22a)) |
-| Active TEE machines | **0 — the remaining gap** |
+| **InstructionSender** | [`0x494bd161F29F4024d91408AC1d480EF960f91348`](https://coston2-explorer.flare.network/address/0x494bd161F29F4024d91408AC1d480EF960f91348) |
+| Source | **Verified** — [read it](https://coston2-explorer.flare.network/address/0x494bd161F29F4024d91408AC1d480EF960f91348#code) |
+| Extension | **Registered, id 65955** |
+| `isTeeAvailable()` | **false** — no enclave registered |
 
-Recorded in [`config/coston2/policyguard.json`](config/coston2/policyguard.json). Verify it
-yourself:
+### The two halves, and which one runs
+
+PolicyGuard has a policy layer on Flare and confidential execution in an enclave. They
+are deliberately separable, and the contract reports which one actually ran.
+
+| | Status | Evidence |
+|---|---|---|
+| **Live on-chain** — wallet records, daily limits, payment requests, policy reads | **Working** | Every call below succeeds on Coston2 |
+| **FCC TEE execution** — key generation, policy evaluation, XRPL signing | **Blocked** | `isTeeAvailable()` is false; no machine registered |
+
+`_send` checks machine availability before dispatching. With none registered it emits
+`TeeUnavailable(opType, opCommand)` and returns false, so the on-chain record is written
+and the caller is told the enclave was never asked:
 
 ```bash
 RPC=https://coston2-api.flare.network/ext/C/rpc
-C=0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3
+C=0x494bd161F29F4024d91408AC1d480EF960f91348
 
-cast call --rpc-url $RPC $C 'TEE_EXTENSION_REGISTRY()(address)'
-# 0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE   — the real FCC diamond
+cast call --rpc-url $RPC $C 'extensionId()(uint256)'    # 65955
+cast call --rpc-url $RPC $C 'isTeeAvailable()(bool)'    # false
+cast call --rpc-url $RPC $C 'getWallet(uint64)(address,uint64,uint64)' 1
+# 0x764377752663Fa8AF23226C87dCBCDC270BB7432
+# 10000000        <- a 10 XRP daily limit, published on-chain
 ```
 
-**Done: the contract is wired to a registered extension.** Extension registration turned
-out to be entirely on-chain — `registerExtension`, then allow the machine and project
-owners — needing no proxy and no indexer. So `setExtensionId()` now succeeds and the
-contract reports its id:
+**Nothing simulates the missing half.** There is no code path that produces a signed XRPL
+payment without an enclave — the UI reports "recorded on Flare, enclave not invoked" and
+links to the transaction.
 
-```bash
-cast call --rpc-url $RPC $C 'extensionId()(uint256)'
-# 65954
-```
+### The exact blocker, reproduced
 
-**The remaining gap: no TEE machine has joined that extension.**
-
-```bash
-cast call --rpc-url $RPC 0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE \
-  'getActiveTeeMachines(uint256)((address,address,string)[])' 65954
-# []
-```
-
-Each instruction asks the registry for one random active machine. Asking for one of zero
-reverts with `TooMany()`, so `createWallet()` still fails — correctly, because there is no
-enclave to answer:
-
-```bash
-cast call --rpc-url $RPC $C 'createWallet()(uint64)' --value 1000000000000 --from <your-address>
-# execution reverted: 0xd65ac61e  → TooMany()
-```
-
-Registering a machine is `scripts/post-build.sh`, which needs the TEE stack running behind
-a public HTTPS proxy. That proxy's config
-([`config/proxy/extension_proxy.coston2.docker.toml.example`](config/proxy/extension_proxy.coston2.docker.toml.example))
-requires a `[db]` block of **Coston2 indexer database credentials that only Flare support
-issues**.
-
-This was tested rather than assumed. The full stack builds and starts; `redis` and the TEE
-container come up, and the proxy then dies immediately:
+Registering a TEE machine needs Flare's extension proxy, which connects to a Coston2
+indexer database as the first statement of `proxy.Run`. With placeholder credentials the
+stack builds and starts, and the proxy exits immediately:
 
 ```
 $ docker compose ps -a
@@ -147,13 +136,22 @@ dial tcp: lookup <indexer-db-host>: no such host
     tee-proxy/internal/proxy/proxy.go:49
 ```
 
-The database connection is the first thing `proxy.Run` does, before it serves anything.
-There is no offline or degraded mode to fall back on, so the credentials are a hard
-prerequisite rather than an optimisation.
+There is no offline or degraded mode, so the credentials are a hard prerequisite.
 
-So the on-chain half is complete and publicly auditable; the enclave half needs one
-credential set that cannot be self-served. `/app` reads both conditions on load and names
-whichever is missing, rather than letting you discover it as an unexplained wallet revert.
+### When the credentials arrive
+
+One file, one command:
+
+```bash
+cp config/proxy/extension_proxy.coston2.docker.toml.example    config/proxy/extension_proxy.coston2.docker.toml
+#  fill in the [db] block, then:
+ngrok http 6674
+EXT_PROXY_URL=https://<your-tunnel> ./scripts/enable-tee.sh
+```
+
+[`enable-tee.sh`](scripts/enable-tee.sh) refuses to run against placeholders, starts the
+stack, registers the machine, and confirms `isTeeAvailable()` flipped to true. No code
+change and no redeploy — the app reads that flag from the chain on load.
 
 The Songbird and Flare env files have **empty** address and proxy fields. That is
 deliberate: inventing plausible-looking addresses would produce something that appears

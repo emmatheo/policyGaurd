@@ -32,6 +32,34 @@ export const teeInstructionsSentAbi = parseAbi([
   "event TeeInstructionsSent(uint256 indexed extensionId, bytes32 indexed instructionId, uint32 indexed rewardEpochId, TeeMachine[] teeMachines, bytes32 opType, bytes32 opCommand, bytes message, address[] cosigners, uint64 cosignersThreshold, address claimBackAddress, uint256 fee)",
 ]);
 
+/**
+ * PolicyGuard's own events, read to tell the two halves of an operation apart.
+ *
+ * `TeeUnavailable` is the contract stating that the on-chain record was written and the
+ * enclave was never asked. Reading it is what lets the UI report a partial success
+ * honestly instead of waiting for a result that is never coming.
+ */
+export const policyGuardEventsAbi = parseAbi([
+  "event WalletCreated(uint64 indexed walletId, address indexed owner, bool teeDispatched)",
+  "event DailyLimitSet(uint64 indexed walletId, uint64 limitDrops, bool teeDispatched)",
+  "event PaymentRequested(uint64 indexed walletId, uint64 indexed requestId, string destination, uint64 amountDrops, uint64 limitDrops, bool teeDispatched)",
+  "event TeeUnavailable(bytes32 opType, bytes32 opCommand)",
+]);
+
+/** What a transaction actually accomplished, separated by trust domain. */
+export interface OperationOutcome {
+  txHash: Hash;
+  blockNumber: bigint;
+  /** True when the registry accepted the instruction and an enclave will answer. */
+  teeDispatched: boolean;
+  /** Set when the on-chain record was written but no enclave was reachable. */
+  instruction?: DispatchedInstruction;
+  /** Ids assigned on-chain, available whether or not the TEE ran. */
+  walletId?: bigint;
+  requestId?: bigint;
+  limitDrops?: bigint;
+}
+
 export interface DispatchedInstruction {
   /** The id the TEE proxy will publish the result under. */
   instructionId: Hash;
@@ -49,8 +77,12 @@ export interface DispatchedInstruction {
  * PolicyGuard emits its own event before calling the registry, so TeeInstructionsSent
  * is not necessarily the first log — the logs are scanned rather than indexed.
  */
-export async function awaitDispatch(txHash: Hash): Promise<DispatchedInstruction> {
-  const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+export async function awaitDispatch(
+  txHash: Hash,
+): Promise<DispatchedInstruction> {
+  const receipt = await publicClient.waitForTransactionReceipt({
+    hash: txHash,
+  });
 
   if (receipt.status !== "success") {
     throw new Error(
@@ -161,7 +193,9 @@ export async function awaitResult(
           continue;
         }
 
-        const body = (await response.json()) as ProxyActionResponse & { error?: string };
+        const body = (await response.json()) as ProxyActionResponse & {
+          error?: string;
+        };
 
         if (!response.ok) {
           lastError = body.error ?? `proxy returned ${response.status}`;
@@ -201,18 +235,67 @@ export async function awaitResult(
 }
 
 /**
- * Sends an instruction and waits for the enclave's answer.
+ * Mines an operation and reports what each half of the system actually did.
  *
- * Every operation in the product goes through this function, which is what makes the
- * on-chain path the only path.
+ * The on-chain policy record and the confidential execution are separate outcomes and
+ * are kept separate here. When no enclave is registered the contract still writes the
+ * record and emits `TeeUnavailable`; this returns `teeDispatched: false` so the caller
+ * can say exactly that, rather than polling for a result that will never exist.
  */
-export async function sendInstruction(
-  txHash: Hash,
+export async function submitOperation(txHash: Hash): Promise<OperationOutcome> {
+  const receipt = await publicClient.waitForTransactionReceipt({
+    hash: txHash,
+  });
+
+  if (receipt.status !== "success") {
+    throw new Error(
+      `Flare transaction ${txHash} reverted — nothing was recorded.`,
+    );
+  }
+
+  const events = parseEventLogs({
+    abi: policyGuardEventsAbi,
+    logs: receipt.logs,
+  });
+
+  const outcome: OperationOutcome = {
+    txHash: receipt.transactionHash,
+    blockNumber: receipt.blockNumber,
+    teeDispatched: !events.some((e) => e.eventName === "TeeUnavailable"),
+  };
+
+  for (const event of events) {
+    if (event.eventName === "WalletCreated")
+      outcome.walletId = event.args.walletId;
+    if (event.eventName === "DailyLimitSet") {
+      outcome.walletId = event.args.walletId;
+      outcome.limitDrops = event.args.limitDrops;
+    }
+    if (event.eventName === "PaymentRequested") {
+      outcome.walletId = event.args.walletId;
+      outcome.requestId = event.args.requestId;
+      outcome.limitDrops = event.args.limitDrops;
+    }
+  }
+
+  if (outcome.teeDispatched) {
+    outcome.instruction = await awaitDispatch(txHash);
+  }
+
+  return outcome;
+}
+
+/**
+ * Waits for the enclave's answer to an already-dispatched instruction.
+ *
+ * Only meaningful when `submitOperation` reported `teeDispatched: true` — there is no
+ * code path that invents a result when it did not.
+ */
+export async function awaitEnclaveResult(
+  instruction: DispatchedInstruction,
   options?: Parameters<typeof awaitResult>[1],
-): Promise<{ instruction: DispatchedInstruction; result: InstructionResult }> {
-  const instruction = await awaitDispatch(txHash);
-  const result = await awaitResult(instruction, options);
-  return { instruction, result };
+): Promise<InstructionResult> {
+  return awaitResult(instruction, options);
 }
 
 /** The proxy returns bytes as hex with or without the prefix, and null when empty. */
