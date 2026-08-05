@@ -30,6 +30,7 @@ import {
   explorerTxUrl,
   readActiveTeeMachines,
   readExtensionId,
+  readWalletsByOwner,
   readIsTeeAvailable,
   readWallet,
   requestPaymentTx,
@@ -58,10 +59,17 @@ import {
 /** A well-known XRPL testnet address, pre-filled so nothing has to be set up first. */
 const DEFAULT_DESTINATION = "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh";
 
+/**
+ * A wallet, as far as this app can currently see it.
+ *
+ * `walletId` comes from the contract and always exists. The XRPL identity is generated
+ * inside the enclave, so it is absent until an enclave has actually answered — the two
+ * are separate facts and the type says so rather than pretending an address exists.
+ */
 interface Wallet {
   walletId: bigint;
-  classicAddress: string;
-  publicKey: string;
+  classicAddress?: string;
+  publicKey?: string;
 }
 
 /** The policy state, assembled from the two places that actually know it. */
@@ -88,6 +96,8 @@ export default function App() {
   } | null>(null);
 
   const [wallet, setWallet] = useState<Wallet | null>(null);
+  /** Every wallet this account owns, read from the contract. */
+  const [ownedWallets, setOwnedWallets] = useState<bigint[]>([]);
   const [policy, setPolicy] = useState<PolicyState>({
     limitDrops: 0n,
     spentDrops: 0n,
@@ -190,12 +200,44 @@ export default function App() {
     [addLog],
   );
 
+  /** Loads a wallet's published policy so the meter reflects the chain, not memory. */
+  const selectWallet = useCallback(async (walletId: bigint) => {
+    setWallet({ walletId });
+    setVerdict(null);
+    setPartial(null);
+    try {
+      const onChain = await readWallet(walletId);
+      setPolicy({
+        limitDrops: onChain.dailyLimitDrops,
+        spentDrops: 0n,
+        remainingDrops: onChain.dailyLimitDrops,
+        signed: 0,
+        refused: 0,
+      });
+      setLimitInput(formatXRP(onChain.dailyLimitDrops));
+    } catch {
+      // A wallet that cannot be read is not worth blocking the UI over.
+    }
+  }, []);
+
   async function onConnect() {
     setError(null);
     try {
       const connected = await connectWallet();
       setAccount(connected);
       addLog({ kind: "info", title: "Wallet connected", detail: connected });
+
+      // Pick up wallets from previous sessions — they live on-chain, not here.
+      const owned = await readWalletsByOwner(connected);
+      setOwnedWallets(owned);
+      if (owned.length > 0) {
+        await selectWallet(owned[owned.length - 1]);
+        addLog({
+          kind: "info",
+          title: `Found ${owned.length} wallet(s) you own`,
+          detail: `Using wallet ${owned[owned.length - 1]}. Switch below.`,
+        });
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
@@ -211,11 +253,19 @@ export default function App() {
         createWalletTx(account),
       );
 
+      // The wallet exists on-chain the moment the transaction mines, so it becomes
+      // the active wallet either way. Without an enclave it simply has no XRPL
+      // identity yet, and the following steps still operate on its id.
+      const walletId = outcome.walletId ?? 0n;
+
+      setOwnedWallets((prev) =>
+        prev.includes(walletId) ? prev : [...prev, walletId],
+      );
+
       if (!result) {
-        // Recorded on-chain; the enclave was never asked, so there is no XRPL
-        // identity to show. Saying so is the whole point.
+        setWallet({ walletId });
         setPartial({
-          what: `Wallet ${outcome.walletId} exists on Flare with you as its owner, but no XRPL keypair has been generated — that happens only inside the enclave.`,
+          what: `Wallet ${walletId} exists on Flare with you as its owner, and you can set its policy below. No XRPL keypair has been generated — that happens only inside the enclave.`,
           txHash: outcome.txHash,
         });
         return;
@@ -309,20 +359,25 @@ export default function App() {
     try {
       const amountDrops = parseXRP(amountInput);
 
-      // Read the live XRPL sequence so the signature covers a submittable transaction.
+      // Read the live XRPL sequence so a signature would cover a submittable
+      // transaction. Only possible once the enclave has generated the address; until
+      // then these are placeholders and the request is recorded on-chain regardless.
       setProgress("Reading the XRPL account sequence…");
       let sequence = 1;
       let lastLedgerSequence = 100_000_000;
       try {
+        if (!wallet.classicAddress) {
+          throw new Error("no XRPL address yet");
+        }
         const context = await fetchAccountContext(wallet.classicAddress);
         sequence = context.sequence;
         lastLedgerSequence = context.lastLedgerSequence;
       } catch {
         addLog({
           kind: "info",
-          title: "XRPL testnet unreachable",
+          title: "Using placeholder XRPL sequence",
           detail:
-            "Using fallback sequence values. The policy decision does not depend on them.",
+            "No XRPL address yet, or the testnet is unreachable. The policy decision does not depend on it.",
         });
       }
 
@@ -419,14 +474,59 @@ export default function App() {
                 {wallet ? "Create another wallet" : "Create wallet"}
               </Button>
 
+              {ownedWallets.length > 1 && (
+                <div className="mt-4">
+                  <p className="mb-1.5 text-[12px] font-medium tracking-wide text-ink-500 uppercase">
+                    Your wallets
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {ownedWallets.map((id) => (
+                      <button
+                        key={id.toString()}
+                        type="button"
+                        onClick={() => void selectWallet(id)}
+                        disabled={busy !== null}
+                        className={`rounded-full px-3 py-1.5 text-[13px] font-medium transition ${
+                          wallet?.walletId === id
+                            ? "bg-forest-950 text-white"
+                            : "border border-mint-200 bg-white text-forest-950 hover:bg-mint-50"
+                        }`}
+                      >
+                        Wallet {id.toString()}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {wallet && (
                 <div className="mt-4 space-y-3">
-                  <CopyableHex
-                    label={`XRPL address · wallet ${wallet.walletId}`}
-                    value={wallet.classicAddress}
-                    href={xrplAccountUrl(wallet.classicAddress)}
-                  />
-                  <CopyableHex label="Public key" value={wallet.publicKey} />
+                  {wallet.classicAddress ? (
+                    <>
+                      <CopyableHex
+                        label={`XRPL address · wallet ${wallet.walletId}`}
+                        value={wallet.classicAddress}
+                        href={xrplAccountUrl(wallet.classicAddress)}
+                      />
+                      {wallet.publicKey && (
+                        <CopyableHex
+                          label="Public key"
+                          value={wallet.publicKey}
+                        />
+                      )}
+                    </>
+                  ) : (
+                    <div className="rounded-xl border border-mint-200 bg-mint-50 p-3">
+                      <p className="text-[11px] font-medium tracking-wide text-ink-500 uppercase">
+                        Wallet {wallet.walletId.toString()} · on-chain
+                      </p>
+                      <p className="mt-1.5 text-[13px] leading-relaxed text-ink-700">
+                        The record is live on {activeChain.name} and you own it.
+                        Its XRPL address appears once an enclave generates the
+                        keypair.
+                      </p>
+                    </div>
+                  )}
                   <p className="text-[12.5px] text-ink-500">
                     Fund it at the{" "}
                     <a

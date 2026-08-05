@@ -138,6 +138,19 @@ dial tcp: lookup <indexer-db-host>: no such host
 
 There is no offline or degraded mode, so the credentials are a hard prerequisite.
 
+### A gotcha when running `cast` or `forge` here
+
+The scaffold's `.env` sets `CHAIN=coston2` for the Docker stack, and Foundry reads the
+same variable as `--chain`, where `coston2` is not a valid value. If `cast` fails with
+`invalid value 'coston2' for '--chain'`, move `.env` aside for that command:
+
+```bash
+mv .env .env.bak && cast call ... ; mv .env.bak .env
+```
+
+The scripts in `scripts/` are unaffected — they only shell out to Foundry for the
+deploy, which sets the chain explicitly.
+
 ### When the credentials arrive
 
 One file, one command:
