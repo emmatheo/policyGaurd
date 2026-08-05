@@ -13,9 +13,16 @@
       "constructorArgs": {
         "teeExtensionRegistry": "0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE",
         "teeMachineRegistry": "0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE"
-      }
+      },
+      "sourceVerified": true,
+      "verifiedAt": "https://coston2-explorer.flare.network/address/0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3#code"
     }
   },
   "extensionId": 0,
-  "_extensionIdNote": "Zero until the TEE extension is registered and setExtensionId() is called. Until then the contract is deployed and readable but cannot dispatch instructions, and the app says so rather than pretending otherwise. Registration needs the full FCC stack, which requires Coston2 indexer credentials from Flare support."
+  "_extensionIdNote": "Zero until the TEE extension is registered and setExtensionId() is called. Until then the contract is deployed and readable but cannot dispatch instructions, and the app says so rather than pretending otherwise. Registration needs the full FCC stack, which requires Coston2 indexer credentials from Flare support.",
+  "_observedReverts": {
+    "_comment": "Measured against the live contract with eth_call, not assumed. Both confirm the contract refuses to dispatch rather than failing silently.",
+    "createWallet()": "Extension ID is not set.",
+    "setExtensionId()": "Extension ID not found."
+  }
 }

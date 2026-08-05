@@ -76,6 +76,7 @@ Being precise about this matters more than claiming everything works.
 | | |
 |---|---|
 | **InstructionSender** | [`0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3`](https://coston2-explorer.flare.network/address/0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3) |
+| Source | **Verified** — [read it on the explorer](https://coston2-explorer.flare.network/address/0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3#code) |
 | Deploy transaction | [`0xd8441979…c333f7`](https://coston2-explorer.flare.network/tx/0xd84419798076b0afe8ce602319aa70d5b7501ec38fd7d479590486e570c333f7) |
 | Both registries | `0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE` (the FCC diamond) |
 | `extensionId()` | **0 — not yet registered** |
@@ -84,21 +85,34 @@ Recorded in [`config/coston2/policyguard.json`](config/coston2/policyguard.json)
 yourself:
 
 ```bash
-cast call --rpc-url https://coston2-api.flare.network/ext/C/rpc \
-  0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3 'TEE_EXTENSION_REGISTRY()(address)'
+RPC=https://coston2-api.flare.network/ext/C/rpc
+C=0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3
+
+cast call --rpc-url $RPC $C 'TEE_EXTENSION_REGISTRY()(address)'
+# 0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE   — the real FCC diamond
 ```
 
-**What that zero means.** The contract is deployed, readable, and wired to the real FCC
-diamond, but it cannot dispatch instructions until the TEE extension is registered and
+**What that zero means.** The contract is deployed, source-verified, and wired to the real
+FCC diamond, but it cannot dispatch instructions until the TEE extension is registered and
 `setExtensionId()` is called. Registration needs the full stack from
 [Running it for real](#running-it-for-real), including **Coston2 indexer database
 credentials that only Flare support can issue**. Without them the extension proxy cannot
 follow the chain.
 
-So: the contract half of the system is live and verifiable on a public explorer; the
-enclave half is not yet registered against it. The app reports this state plainly rather
-than pretending a decision came back — that is what the *"extension id is unset"* banner
-on `/app` is for.
+Rather than assert that, here is the live contract saying it:
+
+```bash
+cast call --rpc-url $RPC $C 'createWallet()(uint64)' --value 1000000000000 --from <your-address>
+# execution reverted: Extension ID is not set.
+
+cast call --rpc-url $RPC $C 'setExtensionId()' --from <your-address>
+# execution reverted: Extension ID not found.
+```
+
+That is the correct behaviour for this state: the contract **refuses to dispatch** rather
+than accepting a payment request it cannot deliver. The contract half of the system is
+live and publicly auditable; the enclave half is not yet registered against it. `/app`
+reports exactly this instead of implying a decision came back.
 
 The Songbird and Flare env files have **empty** address and proxy fields. That is
 deliberate: inventing plausible-looking addresses would produce something that appears
