@@ -4,15 +4,15 @@
 
 Submission for the Flare Summer Signal hackathon — Confidential Compute Apps track.
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Femmatheo%2FpolicyGaurd&project-name=policyguard-xrpl&repository-name=policyguard-xrpl)
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Femmatheo%2FpolicyGaurd&project-name=policyguard-xrpl&repository-name=policyguard-xrpl&root-directory=frontend)
 
 **Judges:** the deployed app has a `/verify` page listing every claim with the command to
 check it. The same material is in [The two halves, and which one runs](#the-two-halves-and-which-one-runs) below.
 
-> **One click, nothing to configure.** [`vercel.json`](vercel.json) already carries the
-> live Coston2 contract address and RPC, so the deployed app connects to the real
-> contract immediately. `/app` reads the chain and reports the current setup state —
-> see [Deployed on Coston2](#deployed-on-coston2) for exactly what works today.
+> **One click, nothing to configure.** The live Coston2 address is compiled in as a
+> default, so there are no environment variables to set. The only setting that matters
+> is **Root Directory = `frontend`**, which the button above passes automatically — if
+> you imported the repo by hand, set it in *Project Settings → General*.
 
 ---
 

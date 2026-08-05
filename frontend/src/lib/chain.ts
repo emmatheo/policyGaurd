@@ -73,13 +73,30 @@ export const publicClient = createPublicClient({
 });
 
 /**
+ * PolicyGuard's live deployment, per network.
+ *
+ * Compiled in as a default so a fresh clone or a one-click deploy connects to the real
+ * contract with no configuration. These are public testnet addresses — there is nothing
+ * secret about them, and requiring an environment variable to see a working app is a
+ * worse trade than carrying the address in source.
+ *
+ * `NEXT_PUBLIC_INSTRUCTION_SENDER` still overrides, for your own deployment.
+ */
+const DEPLOYED: Record<string, string> = {
+  coston2: "0x494bd161F29F4024d91408AC1d480EF960f91348",
+  // Songbird and Flare have no public FCC contract set yet — see the README matrix.
+};
+
+/**
  * The deployed PolicyGuard InstructionSender.
  *
  * Written to `config/extension.env` as INSTRUCTION_SENDER by `scripts/pre-build.sh`.
  */
 export const INSTRUCTION_SENDER = (
-  process.env.NEXT_PUBLIC_INSTRUCTION_SENDER ?? ""
-).trim() as Address | "";
+  process.env.NEXT_PUBLIC_INSTRUCTION_SENDER?.trim() ||
+  DEPLOYED[NETWORK] ||
+  ""
+) as Address | "";
 
 export const isConfigured = /^0x[0-9a-fA-F]{40}$/.test(INSTRUCTION_SENDER);
 
