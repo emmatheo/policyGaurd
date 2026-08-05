@@ -243,6 +243,45 @@ export async function readExtensionId(): Promise<bigint> {
   });
 }
 
+/**
+ * Flare's FCC diamond, which routes the extension and machine registries.
+ *
+ * Published in `config/<network>/deployed-addresses.json` as `FlareTeeManager`. Only
+ * Coston2 has a public deployment today.
+ */
+const TEE_MANAGER: Record<string, Address> = {
+  coston2: "0x1a9C4A0f9D76c0b1D91d22E24E573a9b377618aE",
+};
+
+const machineRegistryAbi = parseAbi([
+  "struct TeeMachine { address teeId; address teeProxyId; string url; }",
+  "function getActiveTeeMachines(uint256 extensionId) view returns (TeeMachine[])",
+]);
+
+/**
+ * How many TEE machines are live for this extension.
+ *
+ * Worth checking before offering any action: `sendInstructions` asks the registry for
+ * one random machine, and asking for one of zero reverts with `TooMany()` — an error
+ * that says nothing about the actual problem. Reading the count first lets the app
+ * explain that no enclave is registered yet, rather than letting a wallet surface an
+ * opaque revert after the user has already committed to a transaction.
+ */
+export async function readActiveTeeMachines(
+  extensionId: bigint,
+): Promise<{ teeId: Address; teeProxyId: Address; url: string }[]> {
+  const manager = TEE_MANAGER[NETWORK];
+  if (!manager) return [];
+
+  const machines = await publicClient.readContract({
+    address: manager,
+    abi: machineRegistryAbi,
+    functionName: "getActiveTeeMachines",
+    args: [extensionId],
+  });
+  return [...machines];
+}
+
 export function explorerTxUrl(txHash: string): string {
   return `${activeChain.blockExplorers?.default.url}/tx/${txHash}`;
 }

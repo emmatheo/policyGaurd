@@ -18,11 +18,14 @@
       "verifiedAt": "https://coston2-explorer.flare.network/address/0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3#code"
     }
   },
-  "extensionId": 0,
-  "_extensionIdNote": "Zero until the TEE extension is registered and setExtensionId() is called. Until then the contract is deployed and readable but cannot dispatch instructions, and the app says so rather than pretending otherwise. Registration needs the full FCC stack, which requires Coston2 indexer credentials from Flare support.",
+  "extensionId": 65954,
+  "setExtensionIdTx": "0x97ceeab7373d19ee7052357067f29c0c419da4c64f8dd40bc6eb958261b5c22a",
+  "_extensionIdNote": "Registered on-chain and wired into the contract. Extension registration is entirely on-chain and needed no proxy or indexer.",
+  "activeTeeMachines": 0,
+  "_teeMachineNote": "No TEE machine has joined extension 65954 yet, so getRandomTeeIds(id, 1) reverts TooMany(). Registering one requires the TEE stack running behind a public HTTPS proxy, whose config needs Coston2 indexer database credentials that only Flare support issues.",
   "_observedReverts": {
     "_comment": "Measured against the live contract with eth_call, not assumed. Both confirm the contract refuses to dispatch rather than failing silently.",
-    "createWallet()": "Extension ID is not set.",
-    "setExtensionId()": "Extension ID not found."
+    "beforeRegistration": { "createWallet()": "Extension ID is not set.", "setExtensionId()": "Extension ID not found." },
+    "afterRegistration": { "setExtensionId()": "succeeded, extensionId() = 65954", "createWallet()": "reverts TooMany() — no active TEE machine to route to" }
   }
 }

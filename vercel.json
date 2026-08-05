@@ -4,5 +4,12 @@
   "buildCommand": "cd frontend && npm run build",
   "devCommand": "cd frontend && npm run dev",
   "installCommand": "cd frontend && npm install",
-  "outputDirectory": "frontend/.next"
+  "outputDirectory": "frontend/.next",
+  "env": {
+    "NEXT_PUBLIC_INSTRUCTION_SENDER": "0xC23B7F3C78ad63F07f6BC5EBC1f3Dd6Aa51927a3",
+    "NEXT_PUBLIC_FLARE_NETWORK": "coston2",
+    "NEXT_PUBLIC_FLARE_RPC": "https://coston2-api.flare.network/ext/C/rpc",
+    "NEXT_PUBLIC_INSTRUCTION_FEE_WEI": "1000000000000",
+    "NEXT_PUBLIC_XRPL_RPC": "https://s.altnet.rippletest.net:51234/"
+  }
 }

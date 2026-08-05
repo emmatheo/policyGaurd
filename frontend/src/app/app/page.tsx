@@ -26,6 +26,7 @@ import {
   explorerAddressUrl,
   INSTRUCTION_SENDER,
   isConfigured,
+  readActiveTeeMachines,
   readExtensionId,
   readWallet,
   requestPaymentTx,
@@ -66,6 +67,7 @@ export default function App() {
   const [account, setAccount] = useState<Address | null>(null);
   const [extensionId, setExtensionId] = useState<bigint | null>(null);
   const [setupError, setSetupError] = useState<string | null>(null);
+  const [teeMachines, setTeeMachines] = useState<number | null>(null);
 
   const [wallet, setWallet] = useState<Wallet | null>(null);
   const [policy, setPolicy] = useState<PolicyState>({
@@ -92,27 +94,40 @@ export default function App() {
     );
   }, []);
 
-  // Confirm the contract knows its extension id. Without it every send reverts with
-  // "Extension ID is not set", which is worth catching before anything is clicked.
+  // Check the two setup conditions that make every send revert, so they are reported
+  // before anything is clicked rather than as an opaque wallet error afterwards.
   useEffect(() => {
     if (!isConfigured) return;
-    readExtensionId()
-      .then((id) => {
-        setExtensionId(id);
-        if (id === 0n) {
-          setSetupError(
-            "The contract is deployed but its extension id is unset. Run setExtensionId() " +
-              "after registering the extension, or instructions cannot be dispatched.",
-          );
-        }
-      })
-      .catch((e) =>
+    (async () => {
+      const id = await readExtensionId();
+      setExtensionId(id);
+
+      if (id === 0n) {
         setSetupError(
-          `Could not read the contract at ${INSTRUCTION_SENDER} on ${activeChain.name}: ${
-            e instanceof Error ? e.message : String(e)
-          }`,
-        ),
-      );
+          "The contract is deployed but its extension id is unset. Register the extension, " +
+            "then call setExtensionId() — until then no instruction can be dispatched.",
+        );
+        return;
+      }
+
+      // The registry picks a random active machine per instruction. With none
+      // registered it reverts TooMany(), which explains nothing on its own.
+      const machines = await readActiveTeeMachines(id);
+      setTeeMachines(machines.length);
+      if (machines.length === 0) {
+        setSetupError(
+          `Extension ${id} is registered, but no TEE machine has joined it yet, so there is ` +
+            "no enclave to answer. Start the TEE stack and run scripts/post-build.sh to " +
+            "register one. Until then every request reverts with TooMany().",
+        );
+      }
+    })().catch((e) =>
+      setSetupError(
+        `Could not read the contract at ${INSTRUCTION_SENDER} on ${activeChain.name}: ${
+          e instanceof Error ? e.message : String(e)
+        }`,
+      ),
+    );
   }, []);
 
   /**
@@ -323,7 +338,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-mint-50">
-      <AppHeader account={account} onConnect={onConnect} extensionId={extensionId} />
+      <AppHeader
+        account={account}
+        onConnect={onConnect}
+        extensionId={extensionId}
+        teeMachines={teeMachines}
+      />
 
       <main className="mx-auto max-w-[1200px] px-5 py-10 sm:px-8 sm:py-12">
         {setupError && (
@@ -471,10 +491,13 @@ function AppHeader({
   account,
   onConnect,
   extensionId,
+  teeMachines,
 }: {
   account: Address | null;
   onConnect: () => void;
   extensionId: bigint | null;
+  /** Active TEE machines for the extension; null until read. */
+  teeMachines: number | null;
 }) {
   return (
     <header className="sticky top-0 z-40 bg-forest-950">
@@ -491,6 +514,7 @@ function AppHeader({
             {extensionId !== null && extensionId > 0n && (
               <span className="font-mono text-white/40">
                 · ext {extensionId.toString()}
+                {teeMachines !== null && ` · ${teeMachines} TEE`}
               </span>
             )}
           </span>
